@@ -1,0 +1,45 @@
+# Campfire Crawl
+
+A top-down, pixel-art dungeon crawler for 1-4 players who pass one keyboard and
+mouse between turns. See [GAME_DESIGN.md](GAME_DESIGN.md) for the full design.
+
+Built so far: the hub and all of map 1 (Whispering Woods into the Bandit Cave).
+
+## Run it
+
+```bash
+npm install
+npm run dev
+```
+
+Then open http://localhost:5183.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| W A S D | Move |
+| Mouse | Aim |
+| Left click / Right click / Space | Use slots 1, 2, 3 |
+| E | Interact |
+| Tab or I | Pack |
+| M | Map |
+| Esc | Pause |
+
+## Project layout
+
+- `src/data/` - items, monsters, upgrades and maps. `map1.ts` is the whole first map.
+- `src/world/mapdef.ts` - the map format and the builder maps are authored with.
+- `src/game/` - the world scene, monster behaviour and puzzle state.
+- `src/ui/` - menus and HUD (plain DOM over the canvas).
+- `src/art/`, `src/audio/` - pixel art and sound, all generated in code.
+- `src/run.ts`, `src/save.ts` - run rules and save files.
+
+## Checks
+
+```bash
+npm run check
+```
+
+Type-checks, verifies every map is completable (each gate gates, each secret
+needs its trick), and runs the rule checks.

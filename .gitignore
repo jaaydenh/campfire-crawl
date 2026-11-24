@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+.vite/
+
+# Generated art previews (npx tsx scripts/dump-art.ts)
+scripts/out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Exported game saves
+campfire-crawl-save-*.json
+relay-of-embers-save-*.json
+
+# Personal tool settings
+.claude/settings.local.json
+.claude/worktrees/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
