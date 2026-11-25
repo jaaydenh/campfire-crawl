@@ -23,6 +23,7 @@ export function buildArtFrames(): Record<SheetKey, Img[]> {
     hero1: buildHero(1),
     hero2: buildHero(2),
     hero3: buildHero(3),
+    hero4: buildHero(4),
     slime: monsters.slime,
     wolf: monsters.wolf,
     bandit: monsters.bandit,

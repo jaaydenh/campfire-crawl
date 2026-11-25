@@ -228,6 +228,8 @@ seams(allTiles.slice(12), 4).save(join(outDir, 'seams_b.png'), 4);
   put('hero1', 4, 4, 7);
   put('hero2', 2, 5, 7);
   put('hero3', 1, 6, 7);
+  put('hero4', 0, 4, 8);
+  put('hero4', 4, 5, 8);
   put('slime', 0, 8, 6);
   put('slime', 1, 9, 5);
   put('wolf', 0, 6, 9);

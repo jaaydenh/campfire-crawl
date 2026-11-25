@@ -7,7 +7,8 @@ import type { World } from '../game/world';
 import { TILE } from '../types';
 import { musicIcon, toggleMusic } from './sound';
 
-export const HERO_COLORS = ['#5aa2ff', '#ff6a5a', '#6fd36a', '#f2c84b'];
+/** Name colour per hero look; its length is the number of looks on offer. */
+export const HERO_COLORS = ['#5aa2ff', '#ff6a5a', '#6fd36a', '#f2c84b', '#ff7fc0'];
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export const ico = (i: number, cls = '') => `<i class="ico ${cls}" style="--i:${i}"></i>`;
 

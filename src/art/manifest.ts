@@ -149,6 +149,7 @@ export const SHEETS = {
   hero1: { w: 16, h: 16, frames: 6 }, // red tunic
   hero2: { w: 16, h: 16, frames: 6 }, // green tunic
   hero3: { w: 16, h: 16, frames: 6 }, // gold tunic
+  hero4: { w: 16, h: 16, frames: 6 }, // heroine: purple hair, pink dress
   // Monsters: 2 animation frames each.
   slime: { w: 16, h: 16, frames: 2 }, // green blob, squash and stretch
   wolf: { w: 16, h: 16, frames: 2 }, // grey wolf in profile

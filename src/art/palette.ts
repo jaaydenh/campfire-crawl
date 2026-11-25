@@ -40,6 +40,9 @@ export const PALETTE_HEX: Record<string, string> = {
   c: '#b0e8f6', // ice
   p: '#46285f', // dark purple
   P: '#8a4cb4', // purple
+  m: '#b8407e', // pink shade
+  k: '#f06fb0', // pink
+  q: '#ffc4de', // pale pink
   // cave floor
   v: '#413846', // cave floor shade
   V: '#4f4553', // cave floor base

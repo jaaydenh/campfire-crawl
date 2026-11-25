@@ -18,7 +18,7 @@ export interface ItemStack {
 /** A hero that persists between runs inside a save file. */
 export interface HeroProfile {
   name: string;
-  color: number; // 0..3, selects sheet hero0..hero3
+  color: number; // 0..4, selects sheet hero0..hero4 (4 is the heroine)
   renown: number; // meta currency
   upgrades: Record<string, number>;
   /** Starter kit chosen for the next run: 3 active slots then the passive slot. Paid for when the run starts. */

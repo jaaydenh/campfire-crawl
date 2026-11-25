@@ -11,7 +11,7 @@ import { G } from './core';
 import { GameScene, scene } from './game/scene';
 import { initInput } from './input';
 import { UI_SCALE, VIEW_H, VIEW_W } from './types';
-import { hudFrame, initHud } from './ui/hud';
+import { HERO_COLORS, hudFrame, initHud } from './ui/hud';
 import { initUi, titleScreen } from './ui/ui';
 
 const stage = document.getElementById('stage')!;
@@ -31,7 +31,7 @@ G.art = buildArtCanvases();
 for (const key of Object.keys(G.art) as SheetKey[]) G.artUrl[key] = G.art[key].toDataURL();
 const rootStyle = document.documentElement.style;
 rootStyle.setProperty('--icons', `url(${G.artUrl.icons})`);
-for (let i = 0; i < 4; i++) rootStyle.setProperty(`--hero${i}`, `url(${G.artUrl[`hero${i}` as SheetKey]})`);
+for (let i = 0; i < HERO_COLORS.length; i++) rootStyle.setProperty(`--hero${i}`, `url(${G.artUrl[`hero${i}` as SheetKey]})`);
 
 initInput(gameEl);
 initHud(uiEl);

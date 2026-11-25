@@ -225,7 +225,7 @@ export function hubScreen(): void {
 
   const addForm = addingHero
     ? `<div class="panel inset"><input id="heroname" maxlength="10" placeholder="Hero name" autocomplete="off">
-        <div class="row">${[0, 1, 2, 3].map((c) => `<button class="colorpick" data-act="create" data-c="${c}">${heroIco(c)}</button>`).join('')}</div>
+        <div class="row">${HERO_COLORS.map((_, c) => `<button class="colorpick" data-act="create" data-c="${c}">${heroIco(c)}</button>`).join('')}</div>
         <p class="muted small">Type a name, then pick a colour.</p></div>`
     : s.heroes.length < MAX_HEROES
       ? `<button class="btn ghost wide" data-act="add">+ Add a hero</button>`
