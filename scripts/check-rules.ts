@@ -6,7 +6,7 @@ import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
 import { ITEMS, ITEM_LIST, STARTER_POOL, STARTER_WEAPON, isLastingWeapon, newStack } from '../src/data/items';
 import { MELEE_CONE, RANGED_CONE, leadAngle, pickTarget } from '../src/game/aim';
 import { World } from '../src/game/world';
-import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, spendable, toggleKitItem, trimKit, unpackBits } from '../src/run';
+import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, campRest, comebackHp, heroFell, rescueFallen, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, spendable, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
 import { controlsOf } from '../src/types';
 
@@ -100,6 +100,69 @@ assert.equal(run.active, 0);
 advanceTurn(run);
 advanceTurn(run);
 assert.equal(run.active, 0);
+
+// falling and rescue: a death holds the life at risk where the hero fell, and reaching the spot wins it back
+{
+  const s = newSave();
+  s.heroes.push({ name: 'Ka', color: 0, renown: 0, upgrades: { vit: 1 }, kit: [null, null, null, null] });
+  s.heroes.push({ name: 'Lu', color: 1, renown: 0, upgrades: {}, kit: [null, null, null, null] });
+  const r = createRun(s, [0, 1], 'map1');
+  assert.equal(r.lives, 4);
+  r.heroes[0].hp = 3;
+  assert.equal(heroFell(s, r, 100.4, 200.6), false);
+  assert.equal(r.lives, 3, 'the life leaves the pool');
+  assert.deepEqual(r.fallen, { hero: 0, x: 100, y: 201 }, 'and waits where the hero fell');
+  assert.equal(r.heroes[0].deaths, 1);
+  assert.equal(r.heroes[0].hp, 24, 'the fallen hero comes back at full health');
+  assert.equal(r.heroes[0].bonusHp, comebackHp(24), 'with comeback health on top');
+  assert.equal(comebackHp(24), 6);
+  assert.equal(comebackHp(20), 5);
+  advanceTurn(r);
+  assert.equal(rescueFallen(r), 0, 'the next hero reaches the spot');
+  assert.equal(r.lives, 4, 'and the life is back');
+  assert.equal(r.fallen, null);
+  assert.equal(rescueFallen(r), null, 'nobody left to rescue');
+  assert.equal(r.lives, 4);
+  // the rescuer falls first: both lives are spent and nobody is left waiting
+  assert.equal(heroFell(s, r, 10, 10), false);
+  advanceTurn(r);
+  assert.equal(heroFell(s, r, 20, 20), false);
+  assert.equal(r.lives, 2);
+  assert.equal(r.fallen, null);
+  // the last life can still be rescued: the party plays on with none in the pool
+  assert.equal(heroFell(s, r, 30, 30), false);
+  assert.equal(heroFell(s, r, 40, 40), true, 'lives 2: a death and a failed rescue end the run');
+  assert.equal(r.lives, 0);
+  r.lives = 1;
+  r.fallen = null;
+  assert.equal(heroFell(s, r, 30, 30), false, 'the last life is held, not lost');
+  assert.deepEqual([r.lives, (r.fallen as { hero: number } | null)?.hero], [0, r.active]);
+  assert.equal(rescueFallen(r), r.active);
+  assert.equal(r.lives, 1);
+  assert.equal(heroFell(s, r, 30, 30), false);
+  assert.equal(heroFell(s, r, 30, 30), true, 'falling on the last-chance rescue ends the run');
+  assert.equal(r.lives, 0, 'lives never go below zero');
+  // a save from before rescues existed has no marker: its next death behaves like any first death
+  const olderRun = JSON.parse(JSON.stringify(createRun(s, [0], 'map1')));
+  delete olderRun.fallen;
+  assert.equal(heroFell(s, olderRun, 5, 5), false);
+  assert.equal(olderRun.lives, 1);
+
+  // campfires: everyone rests up to half health, nobody is lowered, and the arriving hero's comeback health ends
+  const c = createRun(s, [0, 1], 'map1');
+  c.heroes[0].hp = 2;
+  c.heroes[0].bonusHp = 4;
+  c.heroes[1].hp = 17;
+  c.heroes[1].bonusHp = 5; // waiting for their turn after a death
+  campRest(s, c);
+  assert.equal(c.heroes[0].hp, 12, 'half of 24');
+  assert.equal(c.heroes[0].bonusHp, 0);
+  assert.equal(c.heroes[1].hp, 17, 'a hero above half is left alone');
+  assert.equal(c.heroes[1].bonusHp, 5, 'a waiting hero keeps their comeback health');
+  c.heroes[1].hp = 1;
+  campRest(s, c);
+  assert.equal(c.heroes[1].hp, 10, 'half of 20');
+}
 
 // fog packing
 const bits = new Uint8Array(1000).map((_, i) => (i * 7) % 3 === 0 ? 1 : 0);

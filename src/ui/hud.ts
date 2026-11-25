@@ -26,7 +26,7 @@ export function initHud(root: HTMLElement): void {
   el.innerHTML = `
     <div class="hud-tl">
       <div class="hud-name" data-h="name"></div>
-      <div class="hpbar"><div class="hpfill" data-h="hpfill"></div><span data-h="hp"></span></div>
+      <div class="hpbar"><div class="hpfill" data-h="hpfill"></div><div class="hpbonus" data-h="hpbonus"></div><span data-h="hp"></span></div>
       <div class="hud-row"><span>${ico(IC.GoldUI, 'sm')}<b data-h="gold"></b></span><span data-h="keys"></span></div>
     </div>
     <div class="hud-tr">
@@ -84,13 +84,15 @@ export function hudFrame(): void {
   const h = scene.hero;
   set('name', `<span style="color:${HERO_COLORS[p.color]}">${esc(p.name)}</span>`);
   if (st) {
-    set('hp', `${Math.max(0, Math.ceil(rh.hp))} / ${st.maxHp}`);
+    const bonus = Math.ceil(rh.bonusHp ?? 0);
+    set('hp', `${Math.max(0, Math.ceil(rh.hp))}${bonus > 0 ? ` <b class="bonus">+${bonus}</b>` : ''} / ${st.maxHp}`);
+    style('hpbonus', 'width', `${Math.max(0, Math.min(100, (bonus / st.maxHp) * 100)).toFixed(0)}%`);
     style('hpfill', 'width', `${Math.max(0, Math.min(100, (rh.hp / st.maxHp) * 100)).toFixed(0)}%`);
     style('hpfill', 'background', rh.hp / st.maxHp < 0.3 ? '#e0483a' : '#5fc24f');
   }
   set('gold', String(rh.gold));
   set('keys', r.keys.map((k) => ico(k === 'blue' ? IC.KeyBlueUI : IC.KeyRedUI, 'sm')).join(''));
-  set('lives', String(r.lives));
+  set('lives', String(r.lives) + (r.fallen ? ' <span class="risk">+1 to rescue</span>' : ''));
   set('section', esc(scene.def.sectionNames[r.checkpoint] ?? ''));
   const total = scene.def.checkpoints.length;
   set('pips', Array.from({ length: total }, (_, i) => `<i class="pip ${i <= r.checkpoint ? 'on' : ''}"></i>`).join('') + '<i class="pip bosspip"></i>');
@@ -164,6 +166,11 @@ export function drawMap(ctx: CanvasRenderingContext2D, w: World, x0: number, y0:
     if (!c) continue;
     ctx.fillStyle = c;
     ctx.fillRect((o.x - x0) * scale, (o.y - y0) * scale, scale, scale);
+  }
+  const fallen = run().fallen;
+  if (fallen) {
+    ctx.fillStyle = '#6dff8a';
+    ctx.fillRect((Math.floor(fallen.x / TILE) - x0) * scale, (Math.floor(fallen.y / TILE) - y0) * scale, scale, scale);
   }
   ctx.fillStyle = '#ffffff';
   ctx.fillRect((hx - x0) * scale - (scale > 1 ? 1 : 0), (hy - y0) * scale - (scale > 1 ? 1 : 0), scale + (scale > 1 ? 2 : 0), scale + (scale > 1 ? 2 : 0));

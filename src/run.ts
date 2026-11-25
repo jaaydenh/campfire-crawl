@@ -268,6 +268,56 @@ export function advanceTurn(run: RunState): void {
   run.active = (run.active + 1) % run.heroes.length;
 }
 
+// ---------------------------------------------------------------- falling, rescue and rest
+
+/** How close (px) a hero must come to a fallen hero to save them. Wide enough to reach one lying under a shut gate or a reset block. */
+export const RESCUE_REACH = 18;
+/** Share of max HP a hero gets as comeback health on the turn after they die. */
+export const COMEBACK_SHARE = 0.25;
+/** A campfire brings every hero up to at least this share of their max HP. */
+export const CAMP_REST_SHARE = 0.5;
+
+export const comebackHp = (maxHp: number) => Math.ceil(maxHp * COMEBACK_SHARE);
+
+/**
+ * The active hero has died at (x, y). They come back next turn at full health with comeback health on top.
+ * With nobody waiting for rescue, their life is held at risk where they fell instead of being spent.
+ * A hero who dies while another is waiting loses both lives, and leaves no one to rescue.
+ * Returns true when the run is over.
+ */
+export function heroFell(save: SaveFile, run: RunState, x: number, y: number): boolean {
+  const rh = run.heroes[run.active];
+  const max = heroStats(save, rh).maxHp;
+  rh.deaths++;
+  rh.hp = max;
+  rh.bonusHp = comebackHp(max);
+  if (run.fallen) {
+    run.fallen = null;
+    const left = run.lives - 1;
+    run.lives = Math.max(0, left);
+    return left <= 0;
+  }
+  if (run.lives <= 0) return true;
+  run.lives--;
+  run.fallen = { hero: run.active, x: Math.round(x), y: Math.round(y) };
+  return false;
+}
+
+/** A hero has reached the fallen one: the life held at risk returns to the party. Returns who was saved. */
+export function rescueFallen(run: RunState): number | null {
+  const f = run.fallen;
+  if (!f) return null;
+  run.fallen = null;
+  run.lives++;
+  return f.hero;
+}
+
+/** The party reaches a campfire: the arriving hero's comeback health ends, and everyone rests up to half health. */
+export function campRest(save: SaveFile, run: RunState): void {
+  run.heroes[run.active].bonusHp = 0;
+  for (const rh of run.heroes) rh.hp = Math.max(rh.hp, Math.ceil(heroStats(save, rh).maxHp * CAMP_REST_SHARE));
+}
+
 /** Puts an item on the hero: an empty matching slot first, then the pack. Returns where it went, or null if full. */
 export function giveItem(rh: RunHero, stack: ItemStack): 'slot' | 'pack' | null {
   const def = ITEMS[stack.id];

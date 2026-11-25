@@ -6,7 +6,7 @@ export interface Hooks {
   toast(msg: string, kind?: 'good' | 'bad' | 'info'): void;
   dialog(name: string, lines: string[]): void;
   onCheckpoint(index: number): void;
-  onHeroDeath(): void;
+  onHeroDeath(x: number, y: number): void; // where the hero fell, in world pixels
   onBossDefeated(): void;
   onBossPhase(phase: number): void;
   frame(): void; // HUD refresh, once per rendered frame

@@ -147,6 +147,11 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .hpbar { position: relative; height: 22px; background: #2a0f12; border: 3px solid #000; outline: 2px solid var(--line); }
 .hpfill { position: absolute; left: 0; top: 0; bottom: 0; background: #5fc24f; transition: width 0.15s; }
 .hpbar span { position: relative; display: block; text-align: center; font-size: 15px; line-height: 16px; }
+/* comeback health: a gold strip along the bottom of the bar, gone once it is used up.
+   It lies over the fill from the left, not after it: it takes damage first, so the bar under it is full. */
+.hpbonus { position: absolute; left: 0; bottom: 0; height: 5px; background: #f2c84b; transition: width 0.15s; }
+.bonus { color: #f2c84b; }
+.risk { color: #6dff8a; font-size: 13px; white-space: nowrap; }
 .hud-row { display: flex; gap: 12px; align-items: center; margin-top: 4px; }
 .hud-tr { position: absolute; right: 12px; top: 10px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .minimap { width: 144px; height: 108px; image-rendering: pixelated; border: 3px solid #000; outline: 2px solid var(--line); opacity: 0.92; }
