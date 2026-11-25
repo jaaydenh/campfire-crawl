@@ -36,7 +36,11 @@ export function parseSave(text: string): SaveFile {
     throw new Error('That file is not a save from this game (or is from a different version).');
   }
   const base = newSave();
-  return { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) } } as SaveFile;
+  const save = { ...base, ...s, settings: { ...base.settings, ...(s.settings ?? {}) } } as SaveFile;
+  // The sword that map 1's hidden grove used to unlock is now every hero's starter weapon, and the grove
+  // holds the longsword instead: a save that found the old sword has the longsword unlocked.
+  if (save.pool.includes('sword')) save.pool = [...new Set(save.pool.map((id) => (id === 'sword' ? 'longsword' : id)))];
+  return save;
 }
 
 export function loadSlot(slot: number): SaveFile | null {

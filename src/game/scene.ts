@@ -37,6 +37,7 @@ const MELEE: Record<string, Swing> = {
   fists: { range: 15, half: 0.95, dmg: 2, knock: 70, scale: 0.7, frame: F.Punch, sfx: 'punch' },
   club: { range: 20, half: 1.0, dmg: 3.5, knock: 190, scale: 1, frame: F.Slash0, sfx: 'swing' },
   sword: { range: 23, half: 1.3, dmg: 4, knock: 100, scale: 1.15, frame: F.Slash0, sfx: 'swing' },
+  longsword: { range: 31, half: 1.3, dmg: 4, knock: 100, scale: 1.55, frame: F.Slash0, sfx: 'swing' },
   cleaver: { range: 25, half: 1.25, dmg: 7, knock: 260, scale: 1.4, frame: F.Slash0, sfx: 'swing' },
   spear: { range: 36, half: 0.3, dmg: 4.5, knock: 110, scale: 1, frame: F.Thrust, sfx: 'swing' },
 };

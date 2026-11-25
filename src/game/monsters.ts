@@ -13,6 +13,18 @@ const tx = (px: number) => Math.floor(px / TILE);
 const center = (t: number) => t * TILE + TILE / 2;
 const BODY = 4;
 
+// Attack reach, in pixels (a tile is 16).
+const LUNGE_SPEED = 250; // px per second
+const LUNGE_RANGE = 39; // ground a wolf covers in one lunge
+const LUNGE_FROM = 28; // a wolf crouches to lunge once the hero is this close
+const ARROW_SPEED = 155;
+const ARROW_REACH = 195; // an archer's arrow fades after flying this far
+const ARCHER_RANGE = 95; // an archer draws once the hero is this close
+const ARCHER_STANDOFF = 73; // and walks closer while the hero is further than this
+const WEB_SPEED = 125;
+const WEB_REACH = 131; // a spider's web fades after flying this far
+const SPIDER_RANGE = 64; // a spider spits once the hero is this close
+
 function makeMon(s: GameScene, type: string, x: number, y: number, spawnId: string | null, parent: Mon | null): Mon {
   const def = MONSTERS[type];
   const gen = def.ai === 'generator';
@@ -404,7 +416,7 @@ export function updateMonsters(s: GameScene, dt: number): void {
         case 'lunger':
           if (m.state === 'chase') {
             steer(s, m, h.x, h.y, speed, dt, false, true);
-            if (dist < 46 && m.cd <= 0 && los) {
+            if (dist < LUNGE_FROM && m.cd <= 0 && los) {
               m.state = 'windup';
               m.t = 300;
             }
@@ -415,10 +427,10 @@ export function updateMonsters(s: GameScene, dt: number): void {
             m.face = dx < 0 ? -1 : 1;
             if (m.t <= 0) {
               m.state = 'attack';
-              m.t = 260;
+              m.t = (LUNGE_RANGE / LUNGE_SPEED) * 1000;
             }
           } else if (m.state === 'attack') {
-            const step = 250 * slow * sec;
+            const step = LUNGE_SPEED * slow * sec;
             s.moveBody(m, m.dirX * step, m.dirY * step, BODY, false);
             if (touch && m.hitCd <= 0 && s.hurtHero(m.def.dmg, m.x, m.y)) m.hitCd = 600;
             if (m.t <= 0) {
@@ -455,15 +467,15 @@ export function updateMonsters(s: GameScene, dt: number): void {
             windup = true;
             m.face = dx < 0 ? -1 : 1;
             if (m.t <= 0) {
-              s.addProj(m.x + Math.cos(toHero) * 8, m.y - 3 + Math.sin(toHero) * 8, Math.cos(toHero) * 155, Math.sin(toHero) * 155, { frame: F.EnemyArrow, dmg: m.def.dmg, life: 1800, fromHero: false });
+              s.addProj(m.x + Math.cos(toHero) * 8, m.y - 3 + Math.sin(toHero) * 8, Math.cos(toHero) * ARROW_SPEED, Math.sin(toHero) * ARROW_SPEED, { frame: F.EnemyArrow, dmg: m.def.dmg, life: (ARROW_REACH / ARROW_SPEED) * 1000, fromHero: false });
               audio.sfx('shoot');
               m.cd = 1900;
               m.state = 'chase';
             }
           } else {
             if (dist < 56) steer(s, m, m.x - dx, m.y - dy, speed, dt, false, false);
-            else if (dist > 104 || !los) steer(s, m, h.x, h.y, speed, dt, false, true);
-            if (m.cd <= 0 && los && dist < 136) {
+            else if (dist > ARCHER_STANDOFF || !los) steer(s, m, h.x, h.y, speed, dt, false, true);
+            if (m.cd <= 0 && los && dist < ARCHER_RANGE) {
               m.state = 'windup';
               m.t = 520;
             }
@@ -487,14 +499,14 @@ export function updateMonsters(s: GameScene, dt: number): void {
           if (m.state === 'windup') {
             windup = true;
             if (m.t <= 0) {
-              s.addProj(m.x, m.y - 2, Math.cos(toHero) * 125, Math.sin(toHero) * 125, { frame: F.Web, dmg: 1, life: 1500, fromHero: false, web: true, spin: 6 });
+              s.addProj(m.x, m.y - 2, Math.cos(toHero) * WEB_SPEED, Math.sin(toHero) * WEB_SPEED, { frame: F.Web, dmg: 1, life: (WEB_REACH / WEB_SPEED) * 1000, fromHero: false, web: true, spin: 6 });
               audio.sfx('shoot');
               m.cd = 2600;
               m.state = 'chase';
             }
           } else {
             steer(s, m, h.x, h.y, speed, dt, false, true);
-            if (m.cd <= 0 && dist < 92 && dist > 26 && los) {
+            if (m.cd <= 0 && dist < SPIDER_RANGE && dist > 26 && los) {
               m.state = 'windup';
               m.t = 420;
             }
@@ -576,7 +588,7 @@ export function drawTelegraphs(s: GameScene): void {
       g.fillPath();
     } else if (m.def.ai === 'lunger') {
       g.lineStyle(6, 0xff3020, 0.22);
-      g.lineBetween(m.x, m.y, m.x + m.dirX * 62, m.y + m.dirY * 62);
+      g.lineBetween(m.x, m.y, m.x + m.dirX * LUNGE_RANGE, m.y + m.dirY * LUNGE_RANGE);
     } else if (m.def.ai === 'ranged') {
       g.lineStyle(1, 0xff3020, 0.4);
       g.lineBetween(m.x, m.y - 3, h.x, h.y - 3);

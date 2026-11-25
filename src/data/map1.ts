@@ -69,7 +69,7 @@ export function buildMap1(): MapDef {
   b.rect(66, 16, 74, 22, T.CaveWall);
   b.rect(67, 17, 73, 21);
   b.set(70, 22, T.Cracked);
-  b.obj('pedestal', 70, 18, { item: 'sword', secret: 's1' });
+  b.obj('pedestal', 70, 18, { item: 'longsword', secret: 's1' });
   b.obj('chest', 68, 18, { loot: 'good' });
   b.obj('pot', 72, 18);
   b.obj('pot', 72, 20);

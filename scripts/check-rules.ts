@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { T } from '../src/art/manifest';
 import { getMap } from '../src/data/maps';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
-import { ITEMS, STARTER_POOL, isLastingWeapon, newStack } from '../src/data/items';
+import { ITEMS, ITEM_LIST, STARTER_POOL, STARTER_WEAPON, isLastingWeapon, newStack } from '../src/data/items';
 import { MELEE_CONE, RANGED_CONE, leadAngle, pickTarget } from '../src/game/aim';
 import { World } from '../src/game/world';
 import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, spendable, toggleKitItem, trimKit, unpackBits } from '../src/run';
@@ -23,7 +23,7 @@ for (let n = 0; n < 200; n++) {
     const o = kitOffer(save, h);
     assert.equal(o.length, KIT_OFFER_SIZE, 'four offers');
     assert.equal(new Set(o).size, KIT_OFFER_SIZE, 'offers are distinct');
-    assert.ok(o.every((id) => save.pool.includes(id) && id !== 'fists'), 'offers come from the unlocked pool');
+    assert.ok(o.every((id) => save.pool.includes(id) && id !== 'fists' && id !== STARTER_WEAPON), 'offers come from the unlocked pool');
     assert.ok(o.some(isWeapon), 'one offer is always a reusable weapon');
     assert.deepEqual(kitOffer(save, h), o, 'the offer does not change until a run starts');
   }
@@ -59,7 +59,11 @@ assert.equal(save.heroes[0].renown, 100 - ITEMS[weapon].kit, 'kit is paid for');
 assert.equal(run.heroes[0].slots[0]?.id, weapon);
 assert.deepEqual(save.heroes[0].kit, [null, null, null, null], 'the kit is used up');
 assert.equal(save.runsPlayed, 1);
-assert.equal(run.heroes[1].slots[0], null);
+// every hero sets out with the starter weapon, in the first active slot the kit left empty
+assert.equal(STARTER_WEAPON, 'sword');
+assert.deepEqual(run.heroes[0].slots.map((s) => s?.id ?? null), [weapon, STARTER_WEAPON, null]);
+assert.deepEqual(run.heroes[1].slots.map((s) => s?.id ?? null), [STARTER_WEAPON, null, null]);
+assert.ok(!ITEM_LIST.includes(ITEMS[STARTER_WEAPON]) && !STARTER_POOL.includes(STARTER_WEAPON), 'the starter weapon is never loot');
 assert.equal(save.heroes[1].renown, 5);
 assert.equal(heroStats(save, run.heroes[0]).maxHp, 20 + 8);
 assert.equal(run.heroes[0].hp, 28);
@@ -72,7 +76,7 @@ const bo = run.heroes[1];
 assert.equal(giveItem(bo, { id: 'bow' }), 'slot');
 assert.equal(giveItem(bo, { id: 'armour' }), 'slot');
 assert.equal(giveItem(bo, { id: 'lantern' }), 'pack', 'second passive goes to the pack');
-for (let i = 0; i < 2; i++) assert.equal(giveItem(bo, { id: 'club' }), 'slot');
+assert.equal(giveItem(bo, { id: 'club' }), 'slot', 'the starter sword and the bow leave one active slot');
 for (let i = 0; i < 5; i++) assert.equal(giveItem(bo, { id: 'club' }), 'pack');
 assert.equal(giveItem(bo, { id: 'club' }), null, 'full pack refuses');
 
@@ -182,6 +186,23 @@ assert.equal(save.knowledge.map1.bestCheckpoint, 3);
 // saves round-trip and reject junk
 assert.deepEqual(parseSave(JSON.stringify(save)).heroes, save.heroes);
 assert.throws(() => parseSave('{"hello":1}'));
+// the sword the hidden grove used to unlock is the starter weapon now: an old save has the longsword instead
+const oldPool = newSave();
+oldPool.pool.push('sword');
+const moved = parseSave(JSON.stringify(oldPool)).pool;
+assert.ok(moved.includes('longsword') && !moved.includes('sword'));
+assert.equal(getMap('map1').objects.find((o) => o.secret === 's1' && o.type === 'pedestal')!.item, 'longsword');
+// a kit of three actives leaves no slot free, so the starter weapon rides in the pack
+const kitted = newSave();
+kitted.created = 1764000000000;
+kitted.heroes.push({ name: 'Jo', color: 0, renown: 1000, upgrades: {}, kit: [null, null, null, null] });
+const actives = () => kitOffer(kitted, 0).filter((id) => ITEMS[id].slot === 'active');
+while (actives().length < 3) kitted.runsPlayed++; // skip to a run whose offer has three actives
+const fullOffer = actives().slice(0, 3);
+fullOffer.forEach((id) => assert.equal(toggleKitItem(kitted, 0, id), 'added'));
+const fullRun = createRun(kitted, [0], 'map1').heroes[0];
+assert.deepEqual(fullRun.slots.map((s) => s?.id), fullOffer);
+assert.equal(fullRun.pack[0]?.id, STARTER_WEAPON);
 assert.throws(() => parseSave('not json'));
 // ---------------------------------------------------------------- upgrade tree
 

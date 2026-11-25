@@ -107,7 +107,8 @@ export enum F {
 export enum IC {
   Fists = 0,
   Club,
-  Sword,
+  Sword, // short sword: the starter weapon
+  Longsword, // larger blade, long grip
   Spear,
   Bow,
   Knives,
