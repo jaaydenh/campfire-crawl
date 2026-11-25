@@ -19,7 +19,7 @@ export function newSave(): SaveFile {
     mapsUnlocked: 1,
     runsPlayed: 0,
     run: null,
-    settings: { music: 0.35, sfx: 0.6 },
+    settings: { music: 0.35, sfx: 0.6, musicOn: true },
   };
 }
 

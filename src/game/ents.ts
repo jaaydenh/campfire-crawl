@@ -91,7 +91,7 @@ export interface Pickup {
   y: number;
   vx: number;
   vy: number;
-  kind: 'coin' | 'heart';
+  kind: 'coin' | 'heart' | 'arrows';
   value: number;
   age: number;
   spr: Img;

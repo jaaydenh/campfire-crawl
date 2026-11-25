@@ -112,6 +112,9 @@ they are my proposals and the first things to change if they feel wrong.
 - Every ability has its own cooldown: fast for melee swings, longer for big spells.
 - Limited-use items (bombs, scrolls, throwing knives) carry charges and are gone
   when spent.
+- The bow uses arrows: a new bow holds 60 (99 at most) and stays equipped when
+  empty. While a bow is equipped, each monster killed has a 15% chance to drop a
+  pile of 10 arrows.
 - Enemies are finite per section. Rarely, a **monster generator** keeps spawning
   until it is destroyed.
 - **Traps:** spikes, arrow slits, flame jets, pits, collapsing floors. Some trap
@@ -178,7 +181,7 @@ Each section targets 3-5 minutes; boss sections run longer.
 | What | Owned by | How |
 |---|---|---|
 | Stat upgrades: max HP, damage, speed, light radius, extra party lives | Each hero | Bought at the hub with meta currency |
-| Starter kit | Each hero, per run | Bought before each run from the unlocked item pool; not kept |
+| Starter kit | Each hero, per run | Before each run every hero is offered 4 random items from the unlocked pool (one is always a reusable weapon) and may buy any of them; not kept |
 | Item pool | Save file | Grows from boss kills and secrets |
 | Map knowledge: found secrets, open shortcuts, bestiary | Save file | Recorded on discovery; shortcuts stay open in later runs |
 | Map and tier unlocks | Save file | Beat a map to unlock the next; beat map 8 to unlock tiers |

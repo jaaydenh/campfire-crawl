@@ -2,28 +2,67 @@
 import assert from 'node:assert/strict';
 import { T } from '../src/art/manifest';
 import { getMap } from '../src/data/maps';
-import { ITEMS, STARTER_POOL } from '../src/data/items';
+import { ITEMS, STARTER_POOL, isLastingWeapon, newStack } from '../src/data/items';
 import { World } from '../src/game/world';
-import { advanceTurn, createRun, finishRun, giveItem, heroStats, kitCost, packBits, rollChest, setFlag, shopStock, unpackBits } from '../src/run';
+import { ARROW_MAX, ARROW_PILE, KIT_OFFER_SIZE, addArrows, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
 
 const save = newSave();
-save.heroes.push({ name: 'Ada', color: 0, renown: 100, upgrades: { vit: 2, wind: 1 }, kit: ['club', null, null, 'lantern'] });
-save.heroes.push({ name: 'Bo', color: 1, renown: 5, upgrades: {}, kit: ['sword', null, null, null] }); // cannot afford: starts bare
+save.created = 1764000000000; // fixed, so the starter kit offers below are the same on every run of this script
+save.heroes.push({ name: 'Ada', color: 0, renown: 100, upgrades: { vit: 2, wind: 1 }, kit: [null, null, null, null] });
+save.heroes.push({ name: 'Bo', color: 1, renown: 5, upgrades: {}, kit: [null, null, null, null] });
+
+// starter kit offers: four per hero, stable until a run starts, always with a reusable weapon
+const isWeapon = (id: string) => isLastingWeapon(ITEMS[id]);
+for (let n = 0; n < 200; n++) {
+  save.runsPlayed = n;
+  for (const h of [0, 1]) {
+    const o = kitOffer(save, h);
+    assert.equal(o.length, KIT_OFFER_SIZE, 'four offers');
+    assert.equal(new Set(o).size, KIT_OFFER_SIZE, 'offers are distinct');
+    assert.ok(o.every((id) => save.pool.includes(id) && id !== 'fists'), 'offers come from the unlocked pool');
+    assert.ok(o.some(isWeapon), 'one offer is always a reusable weapon');
+    assert.deepEqual(kitOffer(save, h), o, 'the offer does not change until a run starts');
+  }
+}
+const seenOffers = new Set<string>();
+for (let n = 0; n < 30; n++) {
+  save.runsPlayed = n;
+  seenOffers.add(kitOffer(save, 0).join());
+}
+assert.ok(seenOffers.size > 10, 'offers vary from run to run');
+save.runsPlayed = 0;
+
+// choosing from the offer
+const offer = kitOffer(save, 0);
+const weapon = offer.find(isWeapon)!;
+const notOffered = save.pool.find((id) => !offer.includes(id))!;
+assert.equal(toggleKitItem(save, 0, notOffered), 'none', 'cannot take an item that is not on offer');
+assert.equal(toggleKitItem(save, 0, weapon), 'added');
+assert.equal(save.heroes[0].kit[0], weapon);
+assert.equal(toggleKitItem(save, 0, weapon), 'removed');
+assert.equal(toggleKitItem(save, 0, weapon), 'added');
+assert.equal(kitCost(save.heroes[0]), ITEMS[weapon].kit);
+assert.equal(toggleKitItem(save, 1, kitOffer(save, 1).find((id) => ITEMS[id].kit > 5)!), 'cost', 'cannot choose more than the hero can pay for');
+save.heroes[1].kit[1] = save.pool.find((id) => !kitOffer(save, 1).includes(id) && ITEMS[id].slot === 'active')!;
+trimKit(save, 1);
+assert.deepEqual(save.heroes[1].kit, [null, null, null, null], 'items that are not on offer are removed');
 
 // starting a run
-assert.equal(kitCost(save.heroes[0]), ITEMS.club.kit + ITEMS.lantern.kit);
 const run = createRun(save, [0, 1], 'map1');
 save.run = run;
 assert.equal(run.lives, 2 * 2 + 1, 'two lives per hero plus Second Wind');
-assert.equal(save.heroes[0].renown, 100 - 30, 'kit is paid for');
-assert.equal(run.heroes[0].slots[0]?.id, 'club');
-assert.equal(run.heroes[0].passive?.id, 'lantern');
-assert.equal(run.heroes[1].slots[0], null, 'unaffordable kit is dropped');
+assert.equal(save.heroes[0].renown, 100 - ITEMS[weapon].kit, 'kit is paid for');
+assert.equal(run.heroes[0].slots[0]?.id, weapon);
+assert.deepEqual(save.heroes[0].kit, [null, null, null, null], 'the kit is used up');
+assert.equal(save.runsPlayed, 1);
+assert.equal(run.heroes[1].slots[0], null);
 assert.equal(save.heroes[1].renown, 5);
 assert.equal(heroStats(save, run.heroes[0]).maxHp, 20 + 8);
-assert.equal(heroStats(save, run.heroes[0]).light, 5 + 3);
 assert.equal(run.heroes[0].hp, 28);
+run.heroes[0].slots[0] = { id: 'club' };
+run.heroes[0].passive = { id: 'lantern' };
+assert.equal(heroStats(save, run.heroes[0]).light, 5 + 3);
 
 // inventory
 const bo = run.heroes[1];
@@ -42,7 +81,7 @@ for (let i = 0; i < 200; i++) {
   const it = rollChest(run, save, 'c' + i, i % 2 ? 'good' : 'rare').item.id;
   assert.ok(STARTER_POOL.includes(it), `${it} is not in the pool`);
   const w = rollChest(run, save, 'w' + i, 'weapon').item.id;
-  assert.ok(ITEMS[w].cat === 'offensive' && !ITEMS[w].charges, `${w} is not a lasting weapon`);
+  assert.ok(isLastingWeapon(ITEMS[w]), `${w} is not a lasting weapon`);
 }
 const stock = shopStock(run, save, 2);
 assert.ok(stock.length >= 5 && stock.some((e) => e.kind === 'heal'));
@@ -107,13 +146,33 @@ w.computeFlow(10, 50);
 assert.ok(w.flow[w.idx(14, 50)] === 4);
 assert.ok(w.los(10, 50, 14, 50) && !w.los(10, 50, 10, 40));
 
+// arrows: a new bow holds 60, piles refill it up to the cap, and only a hero with a bow can use them
+assert.equal(newStack('bow').charges, 60);
+assert.ok(isLastingWeapon(ITEMS.bow) && !isLastingWeapon(ITEMS.knives) && !isLastingWeapon(ITEMS.bombs));
+const archer = run.heroes[1];
+archer.slots = [{ id: 'club' }, null, null];
+archer.pack.fill(null);
+assert.equal(bowEquipped(archer), false);
+assert.equal(addArrows(archer, ARROW_PILE), 0, 'no bow, no use for arrows');
+archer.pack[0] = { id: 'bow', charges: 0 };
+assert.equal(bowEquipped(archer), false, 'a bow in the pack is not equipped');
+assert.equal(addArrows(archer, ARROW_PILE), 10, 'a bow in the pack can still be refilled');
+archer.slots[1] = { id: 'bow', charges: 95 };
+assert.equal(bowEquipped(archer), true);
+assert.equal(addArrows(archer, ARROW_PILE), ARROW_MAX - 95, 'the equipped bow fills first, up to the cap');
+assert.equal(addArrows(archer, ARROW_PILE), 10, 'then the spare bow');
+assert.equal(archer.pack[0]!.charges, 20);
+archer.slots[2] = { id: 'bow' }; // a bow saved before arrows existed
+fillMissingCharges(run);
+assert.equal(archer.slots[2]!.charges, 60);
+
 // ending a run pays out
 run.heroes[0].gold = 40;
 run.heroes[0].earned = 15;
 run.checkpoint = 3;
 const sum = finishRun(save, false, []);
 assert.equal(sum.rows[0].total, 55);
-assert.equal(save.heroes[0].renown, 70 + 55);
+assert.equal(save.heroes[0].renown, 100 - ITEMS[weapon].kit + 55);
 assert.equal(save.run, null);
 assert.equal(save.knowledge.map1.bestCheckpoint, 3);
 

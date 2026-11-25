@@ -8,10 +8,11 @@ import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
 import { UPGRADES } from '../data/upgrades';
 import { scene } from '../game/scene';
-import { giveItem, heroStats, kitCost, shopStock, upgradeCost, type RunSummary } from '../run';
+import { giveItem, heroStats, kitCost, kitOffer, shopStock, toggleKitItem, trimKit, upgradeCost, type RunSummary } from '../run';
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
 import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, type ItemStack, type RunHero } from '../types';
 import { HERO_COLORS, drawMap, esc, ico } from './hud';
+import { applyVolumes, musicIcon, musicToggle, toggleMusic } from './sound';
 
 type Handler = (el: HTMLElement, ev: Event) => void;
 
@@ -110,7 +111,8 @@ function describe(id: string, charges?: string): string {
   const d = ITEMS[id];
   if (!d) return '';
   const tags = [RARITY_NAMES[d.rarity], d.cat, d.slot === 'passive' ? 'passive slot' : 'active slot'];
-  if (d.charges) tags.push(`${charges ?? d.charges} of ${d.charges} uses left`);
+  if (d.ammo) tags.push(`${charges || d.charges} arrows`);
+  else if (d.charges) tags.push(`${charges ?? d.charges} of ${d.charges} uses left`);
   if (d.cooldown && !d.hold) tags.push(`${(d.cooldown / 1000).toFixed(1)}s cooldown`);
   return `<b class="r${d.rarity}">${esc(d.name)}</b><span class="muted"> ${tags.join(' · ')}</span><br>${esc(d.desc)}`;
 }
@@ -147,6 +149,7 @@ export function titleScreen(): void {
       new: (el) => {
         G.slot = Number(el.dataset.i);
         G.save = newSave();
+        applyVolumes();
         app.saveNow();
         hubScreen();
       },
@@ -154,7 +157,7 @@ export function titleScreen(): void {
         G.slot = Number(el.dataset.i);
         G.save = loadSlot(G.slot);
         if (!G.save) return titleScreen();
-        audio.setVolumes(G.save.settings.music, G.save.settings.sfx);
+        applyVolumes();
         hubScreen();
       },
       export: (el) => {
@@ -198,7 +201,6 @@ function confirmBox(msg: string, yes: string, onYes: () => void, onNo: () => voi
 
 let party: number[] = [];
 let selHero = 0;
-let kitPick = -1; // kit cell whose picker is open
 let addingHero = false;
 
 export function hubScreen(): void {
@@ -207,6 +209,7 @@ export function hubScreen(): void {
   party = party.filter((i) => i < s.heroes.length);
   if (!party.length && !s.run) party = s.heroes.map((_, i) => i);
   if (selHero >= s.heroes.length) selHero = Math.max(0, s.heroes.length - 1);
+  s.heroes.forEach((_, i) => trimKit(s, i)); // last run's choices are not on offer any more
   const p = s.heroes[selHero];
 
   const heroCards = s.heroes
@@ -237,22 +240,20 @@ export function hubScreen(): void {
         ${cost === null ? '<span class="muted">Max</span>' : `<button class="btn tiny" data-act="buy" data-id="${u.id}" ${cost > p.renown ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`}</div>`;
     }).join('');
     const kc = kitCost(p);
-    const kitCells = p.kit
-      .map((id, i) => `<button class="cell ${kitPick === i ? 'sel' : ''}" data-act="kit" data-i="${i}" ${id ? `data-item="${id}"` : ''}>${id ? ico(ITEMS[id].icon) : `<span class="empty">${i === 3 ? 'passive' : 'fists'}</span>`}</button>`)
+    const activeFull = p.kit.slice(0, 3).every(Boolean);
+    const offers = kitOffer(s, selHero)
+      .map((id) => {
+        const d = ITEMS[id];
+        const chosen = p.kit.includes(id);
+        const refund = d.slot === 'passive' && p.kit[3] ? ITEMS[p.kit[3]].kit : 0;
+        const blocked = !chosen && (kc - refund + d.kit > p.renown || (d.slot === 'active' && activeFull));
+        return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${chosen ? 'in kit · ' : ''}${ico(IC.Renown, 'sm')}${d.kit}</span></button>`;
+      })
       .join('');
-    let picker = '';
-    if (kitPick >= 0) {
-      const want = kitPick === 3 ? 'passive' : 'active';
-      const opts = s.pool.map((id) => ITEMS[id]).filter((d): d is ItemDef => !!d && d.slot === want);
-      const budget = p.renown - kc + (p.kit[kitPick] ? ITEMS[p.kit[kitPick]!].kit : 0);
-      picker = `<div class="picker"><button class="pick" data-act="pick" data-id="">None</button>${opts
-        .map((d) => `<button class="pick" data-act="pick" data-id="${d.id}" data-item="${d.id}" ${d.kit > budget ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${ico(IC.Renown, 'sm')}${d.kit}</span></button>`)
-        .join('')}</div>`;
-    }
     detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${p.renown} renown to spend</span></h3>
       <h4>Permanent upgrades</h4>${ups}
-      <h4>Starter kit <span class="muted small">${kc ? `costs ${kc} renown when the next run starts` : 'click a slot to buy gear for the next run'}</span></h4>
-      <div class="row kit">${kitCells}</div>${picker}
+      <h4>Starter kit <span class="muted small">${kc ? `costs ${kc} renown at run start` : 'four offers, new every run'}</span></h4>
+      <div class="picker">${offers}</div>
       <div id="desc" class="desc"></div>
       ${s.run ? '' : `<button class="btn ghost tiny danger" data-act="retire">Retire this hero</button>`}`;
   }
@@ -280,11 +281,12 @@ export function hubScreen(): void {
       <button class="btn big" data-act="start" ${party.length && !over ? '' : 'disabled'} data-default>Start run</button></div>`;
   }
 
+  const scrolled = current === 'hub' ? (modal.querySelector('.detail')?.scrollTop ?? 0) : 0;
   show(
     'hub',
     `<div class="screen hub">
       <div class="hubhead"><h2>The Camp</h2><span class="muted">Save ${G.slot + 1}</span><span class="grow"></span>
-        <button class="btn ghost tiny" data-act="bestiary">Bestiary (${s.bestiary.length})</button><button class="btn ghost tiny" data-act="title">Save &amp; exit to title</button></div>
+        <button class="btn ghost tiny" data-act="bestiary">Bestiary (${s.bestiary.length})</button><button class="btn ghost tiny" data-act="title">Save &amp; exit to title</button>${musicToggle()}</div>
       <div class="hubcols">
         <div class="panel col heroes"><h3>Heroes</h3>${heroCards}${addForm}</div>
         <div class="panel col detail">${detail}</div>
@@ -294,7 +296,6 @@ export function hubScreen(): void {
     {
       sel: (el) => {
         selHero = Number(el.dataset.i);
-        kitPick = -1;
         hubScreen();
       },
       party: (el, ev) => {
@@ -336,16 +337,11 @@ export function hubScreen(): void {
         app.saveNow();
         hubScreen();
       },
-      kit: (el) => {
-        const i = Number(el.dataset.i);
-        kitPick = kitPick === i ? -1 : i;
-        hubScreen();
-        modal.querySelector('.picker')?.scrollIntoView({ block: 'nearest' });
-      },
       pick: (el) => {
-        p.kit[kitPick] = el.dataset.id || null;
-        kitPick = -1;
-        audio.sfx('ui');
+        const res = toggleKitItem(s, selHero, el.dataset.id!);
+        if (res === 'full') return toast('All three active slots are taken. Remove one first.', 'bad');
+        if (res === 'cost') return toast('Not enough renown for that.', 'bad');
+        audio.sfx(res === 'added' ? 'buy' : 'ui');
         app.saveNow();
         hubScreen();
       },
@@ -359,6 +355,7 @@ export function hubScreen(): void {
       },
       abandon: () => confirmBox('Abandon this run? Gold carried so far still becomes renown.', 'Abandon', () => app.abandonRun(), hubScreen),
       bestiary: bestiaryScreen,
+      music: musicButton,
       title: () => {
         app.saveNow();
         G.save = null;
@@ -366,6 +363,9 @@ export function hubScreen(): void {
       },
     },
   );
+  // every click redraws the screen: keep the hero panel where the player had scrolled it
+  const panel = modal.querySelector('.detail');
+  if (panel) panel.scrollTop = scrolled;
 }
 
 function bestiaryScreen(): void {
@@ -483,12 +483,19 @@ export function mapScreen(): void {
   drawMap(ctx, scene.world, 0, 0, scene.world.w, scene.world.h, 2, Math.floor(h.x / 16), Math.floor(h.y / 16));
 }
 
+/** Click handler for the music toggle on any menu screen. */
+function musicButton(el: HTMLElement): void {
+  toggleMusic();
+  el.innerHTML = musicIcon();
+  el.blur(); // so Space and Enter keep going to the screen's main button
+}
+
 export function pauseScreen(): void {
-  const v = audio.getVolumes();
+  const v = G.save!.settings;
   overlay(
     'pause',
     `<div class="screen dim"><div class="panel narrow"><h3>Paused</h3>
-      <label>Music <input type="range" id="vmusic" min="0" max="1" step="0.05" value="${v.music}"></label>
+      <div class="row nowrap volrow"><label class="grow">Music <input type="range" id="vmusic" min="0" max="1" step="0.05" value="${v.music}"></label>${musicToggle()}</div>
       <label>Sound <input type="range" id="vsfx" min="0" max="1" step="0.05" value="${v.sfx}"></label>
       <button class="btn wide" data-act="close" data-default>Resume</button>
       <button class="btn ghost wide" data-act="quit">Quit to camp</button>
@@ -496,6 +503,7 @@ export function pauseScreen(): void {
     </div></div>`,
     {
       close: closeScreen,
+      music: musicButton,
       quit: () => {
         overlayResume = false;
         closeScreen();
@@ -506,8 +514,8 @@ export function pauseScreen(): void {
   const upd = () => {
     const m = Number((modal.querySelector('#vmusic') as HTMLInputElement).value);
     const s = Number((modal.querySelector('#vsfx') as HTMLInputElement).value);
-    audio.setVolumes(m, s);
-    G.save!.settings = { music: m, sfx: s };
+    G.save!.settings = { ...G.save!.settings, music: m, sfx: s };
+    applyVolumes();
   };
   modal.querySelectorAll('input[type=range]').forEach((n) => n.addEventListener('input', upd));
 }
@@ -610,7 +618,8 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
     'camp',
     `<div class="screen camp">
       <div class="hubhead"><h2>Campfire ${index} of ${def.checkpoints.length - 1}</h2><span class="muted">${esc(s.heroes[r.heroes[arrived].profile].name)} made it. Progress saved. Everyone earns 5 renown.</span><span class="grow"></span>
-        <span>${ico(IC.LifeUI, 'sm')} ${r.lives} ${r.lives === 1 ? 'life' : 'lives'}</span></div>
+        <span>${ico(IC.LifeUI, 'sm')} ${r.lives} ${r.lives === 1 ? 'life' : 'lives'}</span>
+        ${musicToggle()}</div>
       <div class="campcols"><div class="col grow">${heroPanels}</div>${shop ? `<div class="col shopcol">${shop}</div>` : ''}</div>
       <div id="desc" class="desc"></div>
       <div class="row"><span class="muted small grow">Trade by clicking an item, then a space on any hero. ${last ? "The Chief's hall lies ahead." : `Next: ${esc(def.sectionNames[index])}.`}</span>
@@ -618,6 +627,7 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
     </div>`,
     {
       cell: (el) => clickCell(el, redraw),
+      music: musicButton,
       buyer: (el) => {
         shopBuyer = Number(el.dataset.h);
         redraw();

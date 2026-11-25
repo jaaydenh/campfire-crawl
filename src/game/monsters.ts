@@ -3,7 +3,7 @@ import { F, O } from '../art/manifest';
 import { audio } from '../audio/audio';
 import { G, run } from '../core';
 import { CHIEF_PHASES, GENERATOR_SPAWN, MONSTERS } from '../data/monsters';
-import { hasFlag, setFlag } from '../run';
+import { ARROW_DROP_CHANCE, bowEquipped, hasFlag, setFlag } from '../run';
 import { seeded } from '../rng';
 import { TILE } from '../types';
 import { angDiff, type Mon } from './ents';
@@ -164,6 +164,7 @@ function kill(s: GameScene, m: Mon): void {
     s.dropCoin(m.x, m.y, a + Math.floor(Math.random() * (b - a + 1)));
   }
   if (Math.random() < (hurt ? 0.25 : 0.12)) s.dropHeart(m.x, m.y);
+  if (bowEquipped(run().heroes[run().active]) && Math.random() < ARROW_DROP_CHANCE) s.dropArrows(m.x, m.y);
   if (m.boss) {
     setFlag(r, 'boss:dead');
     s.boss = null;

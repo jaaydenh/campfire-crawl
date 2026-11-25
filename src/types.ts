@@ -82,5 +82,5 @@ export interface SaveFile {
   mapsUnlocked: number; // highest map number available (1-based)
   runsPlayed: number;
   run: RunState | null;
-  settings: { music: number; sfx: number };
+  settings: { music: number; sfx: number; musicOn: boolean };
 }

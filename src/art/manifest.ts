@@ -99,6 +99,7 @@ export enum F {
   Sparkle, // twinkle used on secrets and pickups
   Frost, // ice shard / snowflake
   Slow, // small blue swirl shown over slowed creatures
+  ArrowPile, // a tied bundle of arrows: ammunition pickup
   COUNT,
 }
 
@@ -132,6 +133,8 @@ export enum IC {
   CharmDmg, // one-run might charm
   Heal, // merchant healing (red flask)
   Lock, // locked / unavailable
+  MusicOn, // beamed notes: music toggle, playing
+  MusicOff, // the same notes greyed out and struck through
   COUNT,
 }
 

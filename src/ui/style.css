@@ -101,6 +101,7 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .pick { font: inherit; font-size: 17px; color: var(--text); background: #000; border: 2px solid var(--line); padding: 3px 6px; display: flex; align-items: center; gap: 4px; cursor: pointer; text-align: left; }
 .pick:hover:not(:disabled) { border-color: var(--gold); }
 .pick:disabled { opacity: 0.4; cursor: default; }
+.pick.on { border-color: var(--gold); background: #2a2408; }
 .pick .cost { margin-left: auto; color: var(--gold); white-space: nowrap; }
 .desc { min-height: 52px; font-size: 17px; padding: 6px 8px; background: #000; border: 2px solid #3a355c; }
 .desc:empty::before { content: 'Point at an item to read about it.'; color: #5d577d; }
@@ -111,6 +112,7 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .cell.sel { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold); }
 .cell:disabled { cursor: default; }
 .cell .empty { font-size: 13px; opacity: 0.6; }
+.ch.zero { color: var(--bad); }
 .ch { position: absolute; right: 2px; bottom: 0; font-size: 16px; color: #fff; text-shadow: 2px 2px 0 #000, -1px -1px 0 #000; }
 .cellwrap { display: flex; flex-direction: column; align-items: center; }
 .cellwrap.gap { margin-left: 18px; }
@@ -160,6 +162,11 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .slot .none { color: var(--muted); }
 .cdmask { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(10, 8, 30, 0.72); pointer-events: none; }
 .hud-slots { bottom: 26px; }
+.iconbtn { padding: 3px; line-height: 0; align-self: center; flex: none; }
+.iconbtn .ico { width: 32px; height: 32px; background-size: auto 32px; background-position: calc(var(--i) * -32px) 0; margin: 0; }
+.volrow { align-items: center; }
+.hud-music { position: absolute; right: 12px; bottom: 10px; pointer-events: auto; text-shadow: none; opacity: 0.85; }
+.hud-music:hover { opacity: 1; }
 
 #toasts { position: absolute; left: 50%; top: 86px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; width: 760px; }
 .toast { background: rgba(0, 0, 0, 0.82); border: 2px solid var(--line); padding: 3px 12px; font-size: 18px; text-align: center; transition: opacity 0.5s; }

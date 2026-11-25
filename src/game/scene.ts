@@ -6,7 +6,7 @@ import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
 import { input } from '../input';
-import { giveItem, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
+import { ARROW_MAX, ARROW_PILE, addArrows, fillMissingCharges, giveItem, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
 import { TILE, VIEW_H, VIEW_W, type GroundItem, type ItemStack } from '../types';
 import type { MapDef } from '../world/mapdef';
 import { angDiff, type Bomb, type Hero, type Mon, type Pickup, type Proj } from './ents';
@@ -79,6 +79,7 @@ export class GameScene extends Phaser.Scene {
   loadRun(): void {
     this.unloadRun();
     const r = run();
+    fillMissingCharges(r);
     this.def = getMap(r.mapId);
     this.world = new World(this.def, r, G.save!);
     const { w, h } = this.world;
@@ -440,6 +441,12 @@ export class GameScene extends Phaser.Scene {
     const id = stack?.id ?? 'fists';
     if (id === 'shield' || h.cd[i] > 0) return;
     const def = ITEMS[id];
+    if (def.ammo && stack && (stack.charges ?? 0) <= 0) {
+      // an empty bow stays equipped: it just clicks until arrows are found
+      h.cd[i] = h.cdMax[i] = 400;
+      audio.sfx('deny');
+      return;
+    }
     const mult = this.stats.dmgMult;
     const c = Math.cos(h.aim);
     const s = Math.sin(h.aim);
@@ -524,8 +531,11 @@ export class GameScene extends Phaser.Scene {
     if (stack && stack.charges !== undefined) {
       stack.charges--;
       if (stack.charges <= 0) {
-        rh.slots[i] = null;
-        G.hooks.toast(`${def.name}: none left.`, 'info');
+        if (def.ammo) G.hooks.toast('Out of arrows. Monsters sometimes drop more while the bow is equipped.', 'info');
+        else {
+          rh.slots[i] = null;
+          G.hooks.toast(`${def.name}: none left.`, 'info');
+        }
       }
     }
   }
@@ -1101,6 +1111,12 @@ export class GameScene extends Phaser.Scene {
     this.picks.push({ x, y, vx: Math.cos(a) * 30, vy: Math.sin(a) * 30, kind: 'heart', value: 5, age: 0, spr });
   }
 
+  dropArrows(x: number, y: number): void {
+    const a = Math.random() * Math.PI * 2;
+    const spr = this.add.image(x, y, 'fx', F.ArrowPile).setDepth(DEPTH.floor + 2);
+    this.picks.push({ x, y, vx: Math.cos(a) * 30, vy: Math.sin(a) * 30, kind: 'arrows', value: ARROW_PILE, age: 0, spr });
+  }
+
   private updatePickups(dt: number): void {
     const h = this.hero!;
     const s = dt / 1000;
@@ -1109,7 +1125,9 @@ export class GameScene extends Phaser.Scene {
       p.age += dt;
       const d = Math.hypot(h.x - p.x, h.y - p.y);
       const pull = this.stats.magnet ? 72 : 20;
-      if (p.age > 250 && d < pull && !h.dead) {
+      // arrows are only any use to a hero carrying a bow with room in the quiver
+      const wanted = p.kind !== 'arrows' || [...rh.slots, ...rh.pack].some((st) => st?.id === 'bow' && (st.charges ?? 0) < ARROW_MAX);
+      if (p.age > 250 && d < pull && !h.dead && wanted) {
         p.vx = ((h.x - p.x) / (d || 1)) * 150;
         p.vy = ((h.y - p.y) / (d || 1)) * 150;
       } else {
@@ -1121,8 +1139,12 @@ export class GameScene extends Phaser.Scene {
       if (before.x === p.x && before.y === p.y && d >= pull) p.vx = p.vy = 0;
       p.spr.setPosition(p.x, p.y);
       if (p.kind === 'coin') p.spr.setFrame(Math.floor((this.clock + p.x * 7) / 160) % 2 ? F.Coin1 : F.Coin0);
-      if (p.age > 250 && d < 9 && !h.dead) {
-        if (p.kind === 'coin') {
+      if (p.age > 250 && d < 9 && !h.dead && wanted) {
+        if (p.kind === 'arrows') {
+          const got = addArrows(rh, p.value);
+          audio.sfx('pickup');
+          this.number(h.x, h.y - 10, got, 0xcfa066);
+        } else if (p.kind === 'coin') {
           const v = p.value * this.stats.goldMult;
           const got = Math.floor(v) + (Math.random() < v - Math.floor(v) ? 1 : 0);
           rh.gold += got;

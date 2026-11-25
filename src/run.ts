@@ -1,5 +1,5 @@
 // Run rules that do not need the game world: stats, loot rolls, turn order, rewards.
-import { ITEMS, ITEM_LIST, newStack } from './data/items';
+import { ITEMS, ITEM_LIST, isLastingWeapon, newStack } from './data/items';
 import { UPGRADES } from './data/upgrades';
 import { Rng, seeded } from './rng';
 import { LIVES_PER_HERO, PACK_SIZE, type HeroProfile, type ItemStack, type RunHero, type RunState, type SaveFile } from './types';
@@ -44,10 +44,92 @@ export function kitCost(p: HeroProfile): number {
   return p.kit.reduce((sum, id) => sum + (id ? ITEMS[id].kit : 0), 0);
 }
 
+// --- arrows ---
+
+export const ARROW_PILE = 10; // arrows in one dropped pile
+export const ARROW_MAX = 99; // most a bow can hold
+export const ARROW_DROP_CHANCE = 0.15; // per monster killed while a bow is equipped
+
+/** True when the hero has a bow in one of the three active slots. */
+export const bowEquipped = (rh: RunHero): boolean => rh.slots.some((s) => s?.id === 'bow');
+
+/** Adds arrows to the hero's bow (an equipped one first, then one in the pack). Returns how many fitted. */
+export function addArrows(rh: RunHero, count: number): number {
+  const bow = [...rh.slots, ...rh.pack].find((s) => s?.id === 'bow' && (s.charges ?? 0) < ARROW_MAX);
+  if (!bow) return 0;
+  const before = bow.charges ?? 0;
+  bow.charges = Math.min(ARROW_MAX, before + count);
+  return bow.charges - before;
+}
+
+/** Gives a charge count to stacks saved before their item had one (the bow, before arrows existed). */
+export function fillMissingCharges(run: RunState): void {
+  const fix = (s: ItemStack | null) => {
+    if (s && s.charges === undefined && ITEMS[s.id]?.charges) s.charges = ITEMS[s.id].charges;
+  };
+  for (const rh of run.heroes) [...rh.slots, rh.passive, ...rh.pack].forEach(fix);
+  for (const g of run.ground) fix(g.item);
+}
+
+export const KIT_OFFER_SIZE = 4;
+
+/**
+ * The starter gear a hero may buy before the next run: four items drawn from the unlocked pool.
+ * The draw depends only on the save, the run number and the hero, so it stays the same until a
+ * run starts and is different for the run after. One of the four is always a reusable weapon
+ * when the pool has one, so nobody is offered a start with no way to fight better than fists.
+ */
+export function kitOffer(save: SaveFile, heroIdx: number): string[] {
+  const rng = seeded(save.created >>> 0, `kit:${save.runsPlayed}:${heroIdx}`);
+  const pool = save.pool.filter((id) => ITEMS[id] && id !== 'fists');
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const weapon = pool.findIndex((id) => isLastingWeapon(ITEMS[id]));
+  if (weapon > 0) pool.unshift(pool.splice(weapon, 1)[0]);
+  const order = (id: string) => ITEM_LIST.indexOf(ITEMS[id]);
+  return pool.slice(0, KIT_OFFER_SIZE).sort((a, b) => order(a) - order(b));
+}
+
+/** Removes anything from the hero's chosen kit that is not in their current offer, and any duplicate. */
+export function trimKit(save: SaveFile, heroIdx: number): void {
+  const offer = kitOffer(save, heroIdx);
+  const p = save.heroes[heroIdx];
+  const seen = new Set<string>();
+  p.kit = [0, 1, 2, 3].map((i) => {
+    const id = p.kit[i];
+    if (!id || !offer.includes(id) || seen.has(id) || (ITEMS[id].slot === 'passive') !== (i === 3)) return null;
+    seen.add(id);
+    return id;
+  });
+}
+
+export type KitToggle = 'added' | 'removed' | 'full' | 'cost' | 'none';
+
+/** Puts an offered item into the hero's kit, or takes it out again. Passives replace the current passive. */
+export function toggleKitItem(save: SaveFile, heroIdx: number, id: string): KitToggle {
+  const p = save.heroes[heroIdx];
+  const at = p.kit.indexOf(id);
+  if (at >= 0) {
+    p.kit[at] = null;
+    return 'removed';
+  }
+  const def = ITEMS[id];
+  if (!def || !kitOffer(save, heroIdx).includes(id)) return 'none';
+  const slot = def.slot === 'passive' ? 3 : p.kit.findIndex((k, i) => i < 3 && !k);
+  if (slot < 0) return 'full';
+  const refund = p.kit[slot] ? ITEMS[p.kit[slot]!].kit : 0;
+  if (kitCost(p) - refund + def.kit > p.renown) return 'cost';
+  p.kit[slot] = id;
+  return 'added';
+}
+
 /** Starts a run for the chosen heroes (in turn order). Charges each hero's starter kit. */
 export function createRun(save: SaveFile, heroIdxs: number[], mapId: string): RunState {
   const heroes: RunHero[] = heroIdxs.map((profile) => {
     const p = save.heroes[profile];
+    trimKit(save, profile);
     const cost = kitCost(p);
     const kit = cost <= p.renown ? p.kit : [null, null, null, null];
     if (cost <= p.renown) p.renown -= cost;
@@ -130,7 +212,7 @@ function rollItem(rng: Rng, pool: string[], tier: LootTier): string {
     rare: [0, 5, 5],
   };
   let cands = pool.map((id) => ITEMS[id]).filter(Boolean);
-  if (tier === 'weapon') cands = cands.filter((d) => d.cat === 'offensive' && !d.charges);
+  if (tier === 'weapon') cands = cands.filter(isLastingWeapon);
   const bag: string[] = [];
   for (const d of cands) for (let i = 0; i < weights[tier][d.rarity]; i++) bag.push(d.id);
   if (!bag.length) return rng.pick(cands.length ? cands : ITEM_LIST).id;
