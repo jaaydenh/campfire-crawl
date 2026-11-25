@@ -111,7 +111,7 @@ export function outfit(p: HeroProfile, stack: ItemStack): ItemStack {
 // --- arrows ---
 
 export const ARROW_PILE = 10; // arrows in one dropped pile
-export const ARROW_MAX = 99; // most a bow can hold
+export const ARROW_MAX = 199; // most a bow can hold
 export const ARROW_DROP_CHANCE = 0.15; // per monster killed while a bow is equipped
 
 /** True when the hero has a bow in one of the three active slots. */

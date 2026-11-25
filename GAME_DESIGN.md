@@ -112,7 +112,7 @@ they are my proposals and the first things to change if they feel wrong.
 - Every ability has its own cooldown: fast for melee swings, longer for big spells.
 - Limited-use items (bombs, scrolls, throwing knives) carry charges and are gone
   when spent.
-- The bow uses arrows: a new bow holds 60 (99 at most) and stays equipped when
+- The bow uses arrows: a new bow holds 120 (199 at most) and stays equipped when
   empty. While a bow is equipped, each monster killed has a 15% chance to drop a
   pile of 10 arrows.
 - Enemies are finite per section. Rarely, a **monster generator** keeps spawning

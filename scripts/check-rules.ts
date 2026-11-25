@@ -147,8 +147,8 @@ w.computeFlow(10, 50);
 assert.ok(w.flow[w.idx(14, 50)] === 4);
 assert.ok(w.los(10, 50, 14, 50) && !w.los(10, 50, 10, 40));
 
-// arrows: a new bow holds 60, piles refill it up to the cap, and only a hero with a bow can use them
-assert.equal(newStack('bow').charges, 60);
+// arrows: a new bow holds 120, piles refill it up to the cap, and only a hero with a bow can use them
+assert.equal(newStack('bow').charges, 120);
 assert.ok(isLastingWeapon(ITEMS.bow) && !isLastingWeapon(ITEMS.knives) && !isLastingWeapon(ITEMS.bombs));
 const archer = run.heroes[1];
 archer.slots = [{ id: 'club' }, null, null];
@@ -158,14 +158,14 @@ assert.equal(addArrows(archer, ARROW_PILE), 0, 'no bow, no use for arrows');
 archer.pack[0] = { id: 'bow', charges: 0 };
 assert.equal(bowEquipped(archer), false, 'a bow in the pack is not equipped');
 assert.equal(addArrows(archer, ARROW_PILE), 10, 'a bow in the pack can still be refilled');
-archer.slots[1] = { id: 'bow', charges: 95 };
+archer.slots[1] = { id: 'bow', charges: ARROW_MAX - 4 };
 assert.equal(bowEquipped(archer), true);
-assert.equal(addArrows(archer, ARROW_PILE), ARROW_MAX - 95, 'the equipped bow fills first, up to the cap');
+assert.equal(addArrows(archer, ARROW_PILE), 4, 'the equipped bow fills first, up to the cap');
 assert.equal(addArrows(archer, ARROW_PILE), 10, 'then the spare bow');
 assert.equal(archer.pack[0]!.charges, 20);
 archer.slots[2] = { id: 'bow' }; // a bow saved before arrows existed
 fillMissingCharges(run);
-assert.equal(archer.slots[2]!.charges, 60);
+assert.equal(archer.slots[2]!.charges, 120);
 
 // ending a run pays out
 run.heroes[0].gold = 40;
@@ -258,9 +258,9 @@ assert.equal(full.nose, true);
 // Packrat and Deep Quiver change what a fresh stack holds
 assert.equal(outfit(cy, newStack('knives')).charges, Math.round(14 * 1.6));
 assert.equal(outfit(cy, newStack('bombs')).charges, 8);
-assert.equal(outfit(cy, newStack('bow')).charges, 96);
-assert.ok(96 <= ARROW_MAX);
-assert.equal(outfit(t.heroes[1], newStack('bow')).charges, 60);
+assert.equal(outfit(cy, newStack('bow')).charges, 156);
+assert.ok(156 <= ARROW_MAX);
+assert.equal(outfit(t.heroes[1], newStack('bow')).charges, 120);
 assert.equal(outfit(cy, newStack('club')).charges, undefined);
 
 // Quartermaster, Wider Offer, Second Look
