@@ -162,6 +162,25 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .slot .none { color: var(--muted); }
 .cdmask { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(10, 8, 30, 0.72); pointer-events: none; }
 .hud-slots { bottom: 26px; }
+
+/* upgrade tree */
+.screen.upgrades { align-items: stretch; justify-content: flex-start; gap: 10px; padding: 14px; }
+.upcols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; flex: 1; min-height: 0; }
+.upcol { padding: 10px; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; }
+.upcol h3 { margin: 0; }
+.upnode { background: var(--panel2); border-left: 4px solid var(--line); padding: 3px 8px 4px; }
+.upnode.d1 { margin-left: 10px; }
+.upnode.d2 { margin-left: 20px; }
+.upnode.d3 { margin-left: 30px; }
+.upnode .small { font-size: 15px; }
+.upnode .btn { white-space: nowrap; flex: none; }
+.upnode.own { border-left-color: var(--gold); }
+.upnode.locked > .l1, .upnode.locked > .l2 { opacity: 0.55; }
+.l1, .l2 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.upnode .l2 { min-height: 30px; }
+.upnode .pips { width: auto; font-size: 14px; white-space: nowrap; }
+.upnode .need { color: var(--bad); font-size: 15px; }
+.hubhead .btn.tiny { align-self: center; }
 .iconbtn { padding: 3px; line-height: 0; align-self: center; flex: none; }
 .iconbtn .ico { width: 32px; height: 32px; background-size: auto 32px; background-position: calc(var(--i) * -32px) 0; margin: 0; }
 .volrow { align-items: center; }

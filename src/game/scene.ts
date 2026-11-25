@@ -6,7 +6,7 @@ import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
 import { input } from '../input';
-import { ARROW_MAX, ARROW_PILE, addArrows, fillMissingCharges, giveItem, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
+import { ARROW_MAX, ARROW_PILE, addArrows, fillMissingCharges, giveItem, outfit, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
 import { TILE, VIEW_H, VIEW_W, type GroundItem, type ItemStack } from '../types';
 import type { MapDef } from '../world/mapdef';
 import { angDiff, type Bomb, type Hero, type Mon, type Pickup, type Proj } from './ents';
@@ -18,6 +18,7 @@ type Img = Phaser.GameObjects.Image;
 export const DEPTH = { floor: 2, ent: 10, fx: 60, fog: 100, top: 110 };
 const entDepth = (y: number) => DEPTH.ent + y / 100;
 const HERO_R = 4;
+const NOSE_RANGE = 7; // tiles at which Treasure Nose notices a secret
 const tx = (px: number) => Math.floor(px / TILE);
 const center = (t: number) => t * TILE + TILE / 2;
 
@@ -37,6 +38,8 @@ export class GameScene extends Phaser.Scene {
   bombs: Bomb[] = [];
   boss: Mon | null = null;
   attemptKills: string[] = [];
+  /** Secrets the Treasure Nose upgrade has already chimed for this turn. */
+  private sniffed = new Set<string>();
   prompt = '';
   fogVersion = 0;
   zone: 'forest' | 'cave' = 'forest';
@@ -167,6 +170,7 @@ export class GameScene extends Phaser.Scene {
     const rh = activeHero();
     this.clearActors();
     this.attemptKills = [];
+    this.sniffed.clear();
     this.world.bossLocked = false;
     this.world.resetPuzzlePieces();
     for (const o of this.world.objs) {
@@ -351,6 +355,17 @@ export class GameScene extends Phaser.Scene {
     // secrets
     for (const o of w.objs) {
       if (o.def.type !== 'secret' || hasFlag(r, 'secret:' + o.def.secret)) continue;
+      if (this.stats.nose && !this.sniffed.has(o.def.secret!)) {
+        // Treasure Nose: distance from the hero's tile to the nearest tile of the hidden area
+        const dx = Math.max(o.x - htx, 0, htx - (o.x + (o.def.w ?? 1) - 1));
+        const dy = Math.max(o.y - hty, 0, hty - (o.y + (o.def.h ?? 1) - 1));
+        if (Math.hypot(dx, dy) <= NOSE_RANGE) {
+          this.sniffed.add(o.def.secret!);
+          audio.sfx('key');
+          this.fx(F.Sparkle, this.hero!.x, this.hero!.y - 14, 700);
+          G.hooks.toast('Treasure Nose: something is hidden close by.', 'info');
+        }
+      }
       if (htx >= o.x && hty >= o.y && htx < o.x + (o.def.w ?? 1) && hty < o.y + (o.def.h ?? 1)) {
         setFlag(r, 'secret:' + o.def.secret);
         r.secretsFound++;
@@ -404,7 +419,7 @@ export class GameScene extends Phaser.Scene {
     if (this.stats.armour) dmg = Math.max(1, Math.round(dmg * 0.75));
     const rh = activeHero();
     rh.hp -= dmg;
-    h.iframes = 800;
+    h.iframes = this.stats.iframes;
     const k = opts.knock ?? 150;
     h.kx = -Math.cos(a) * k;
     h.ky = -Math.sin(a) * k;
@@ -527,7 +542,7 @@ export class GameScene extends Phaser.Scene {
       default:
         return;
     }
-    h.cd[i] = h.cdMax[i] = def.cooldown;
+    h.cd[i] = h.cdMax[i] = def.cooldown * this.stats.cdMult;
     if (stack && stack.charges !== undefined) {
       stack.charges--;
       if (stack.charges <= 0) {
@@ -543,6 +558,7 @@ export class GameScene extends Phaser.Scene {
   private melee(range: number, half: number, dmg: number, knock: number, scale: number, frame: F, sfx: 'punch' | 'swing'): void {
     const h = this.hero!;
     audio.sfx(sfx);
+    knock *= this.stats.knockMult;
     const c = Math.cos(h.aim);
     const s = Math.sin(h.aim);
     const reach = frame === F.Thrust ? range * 0.55 : range * 0.6;
@@ -943,7 +959,7 @@ export class GameScene extends Phaser.Scene {
         } else {
           const loot = rollChest(r, G.save!, d.id, (d.loot ?? 'common') as LootTier);
           this.dropCoin(center(o.x), center(o.y) + 8, loot.gold);
-          this.grantItem(loot.item, center(o.x), center(o.y) + 10);
+          this.grantItem(outfit(profileOf(rh), loot.item), center(o.x), center(o.y) + 10);
         }
         break;
       }
@@ -977,7 +993,7 @@ export class GameScene extends Phaser.Scene {
           G.hooks.toast(`New item discovered: ${def.name}. It can now appear in chests, shops and starter kits.`, 'good');
           audio.sfx('secret');
         }
-        this.grantItem(def.charges ? { id: def.id, charges: def.charges } : { id: def.id }, center(o.x), center(o.y) + 12);
+        this.grantItem(outfit(profileOf(rh), def.charges ? { id: def.id, charges: def.charges } : { id: def.id }), center(o.x), center(o.y) + 12);
         break;
       }
       case 'sconce':
@@ -1082,14 +1098,14 @@ export class GameScene extends Phaser.Scene {
           o.up = up;
           spr?.setFrame(up ? O.SpikesUp : O.SpikesDown);
         }
-        if (up && !h.dead && tx(h.x) === o.x && tx(h.y) === o.y) this.hurtHero(3, h.x, h.y + 4, { knock: 0 });
+        if (up && !h.dead && tx(h.x) === o.x && tx(h.y) === o.y) this.hurtHero(this.stats.trapDmg, h.x, h.y + 4, { knock: 0 });
       } else if (d.type === 'arrowtrap' && o.exists) {
         o.timer += dt;
         if (o.timer >= (d.period ?? 1500)) {
           o.timer -= d.period ?? 1500;
           if (Math.hypot(center(o.x) - h.x, center(o.y) - h.y) < 14 * TILE) {
             const [dx, dy] = [[0, 1], [-1, 0], [0, -1], [1, 0]][d.dir ?? 0];
-            this.addProj(center(o.x) + dx * 12, center(o.y) + dy * 12, dx * 150, dy * 150, { frame: F.EnemyArrow, dmg: 3, life: 2000, fromHero: false });
+            this.addProj(center(o.x) + dx * 12, center(o.y) + dy * 12, dx * 150, dy * 150, { frame: F.EnemyArrow, dmg: this.stats.trapDmg, life: 2000, fromHero: false });
           }
         }
       }
@@ -1124,7 +1140,7 @@ export class GameScene extends Phaser.Scene {
     for (const p of this.picks) {
       p.age += dt;
       const d = Math.hypot(h.x - p.x, h.y - p.y);
-      const pull = this.stats.magnet ? 72 : 20;
+      const pull = this.stats.pull;
       // arrows are only any use to a hero carrying a bow with room in the quiver
       const wanted = p.kind !== 'arrows' || [...rh.slots, ...rh.pack].some((st) => st?.id === 'bow' && (st.charges ?? 0) < ARROW_MAX);
       if (p.age > 250 && d < pull && !h.dead && wanted) {
@@ -1150,9 +1166,10 @@ export class GameScene extends Phaser.Scene {
           rh.gold += got;
           audio.sfx('coin');
         } else {
-          rh.hp = Math.min(this.stats.maxHp, rh.hp + p.value);
+          const heal = p.value + this.stats.heartBonus;
+          rh.hp = Math.min(this.stats.maxHp, rh.hp + heal);
           audio.sfx('heart');
-          this.number(h.x, h.y - 10, p.value, 0x7be06a);
+          this.number(h.x, h.y - 10, heal, 0x7be06a);
         }
         p.age = 1e9;
       }

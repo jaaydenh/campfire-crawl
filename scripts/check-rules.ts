@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import { T } from '../src/art/manifest';
 import { getMap } from '../src/data/maps';
+import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
 import { ITEMS, STARTER_POOL, isLastingWeapon, newStack } from '../src/data/items';
 import { World } from '../src/game/world';
-import { ARROW_MAX, ARROW_PILE, KIT_OFFER_SIZE, addArrows, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, toggleKitItem, trimKit, unpackBits } from '../src/run';
+import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
 
 const save = newSave();
@@ -180,4 +181,120 @@ assert.equal(save.knowledge.map1.bestCheckpoint, 3);
 assert.deepEqual(parseSave(JSON.stringify(save)).heroes, save.heroes);
 assert.throws(() => parseSave('{"hello":1}'));
 assert.throws(() => parseSave('not json'));
+// ---------------------------------------------------------------- upgrade tree
+
+// shape: every upgrade is on a path, grows from an upgrade on the same path, and the list is in tree order
+assert.equal(UPGRADES.length, 23);
+assert.equal(new Set(UPGRADES.map((u) => u.id)).size, 23, 'upgrade ids are unique');
+for (const u of UPGRADES) {
+  assert.ok(PATHS.some((p) => p.id === u.path), `${u.id} has a path`);
+  assert.ok(u.costs.length >= 1 && u.costs.every((c, i) => c > 0 && (i === 0 || c > u.costs[i - 1])), `${u.id} costs rise`);
+  if (!u.needs) continue;
+  const parent = UPGRADE[u.needs.id];
+  assert.ok(parent, `${u.id} grows from a real upgrade`);
+  assert.equal(parent.path, u.path, `${u.id} grows from its own path`);
+  assert.ok(u.needs.level >= 1 && u.needs.level <= parent.costs.length, `${u.id} needs a level its parent can reach`);
+  assert.ok(UPGRADES.indexOf(parent) < UPGRADES.indexOf(u), `${u.id} is listed after its parent`);
+  assert.ok(u.costs[0] >= parent.costs[0], `${u.id} costs at least as much as the upgrade above it`);
+  assert.ok(upgradeDepth(u.id) <= 3, `${u.id} is no more than three steps down, which is all the screen indents`);
+}
+assert.deepEqual(UPGRADES.filter((u) => !u.needs).map((u) => u.id), ['vit', 'might', 'swift', 'eyes', 'fortune'], 'the five starting upgrades');
+for (const id of ['bigpack', 'laststand', 'campfire', 'story']) assert.equal(UPGRADE[id], undefined);
+
+// unlocking and buying
+const t = newSave();
+t.created = 1764000000000;
+t.heroes.push({ name: 'Cy', color: 2, renown: 10000, upgrades: {}, kit: [null, null, null, null] });
+const cy = t.heroes[0];
+assert.deepEqual(upgradeLock(cy, 'thick'), { id: 'vit', level: 2 });
+assert.equal(buyUpgrade(cy, 'thick'), false, 'a locked upgrade cannot be bought');
+assert.equal(buyUpgrade(cy, 'vit'), true);
+assert.equal(upgradeLock(cy, 'hearty'), null, 'Vitality 1 opens Hearty');
+assert.ok(upgradeLock(cy, 'thick'), 'but not Thick Skin');
+assert.equal(buyUpgrade(cy, 'vit'), true);
+assert.equal(buyUpgrade(cy, 'thick'), true);
+assert.equal(upgradeLock(cy, 'trap'), null);
+assert.equal(cy.renown, 10000 - 25 - 45 - 40);
+const poor = { name: 'Di', color: 3, renown: 24, upgrades: {}, kit: [null, null, null, null] };
+assert.equal(buyUpgrade(poor, 'vit'), false, 'cannot buy without the renown');
+const old = { name: 'Ed', color: 0, renown: 500, upgrades: { wind: 1 }, kit: [null, null, null, null] };
+assert.equal(upgradeLock(old, 'wind'), null, 'an upgrade owned before the tree existed stays open');
+assert.equal(buyUpgrade(old, 'wind'), true);
+assert.equal(upgradeCost(old, 'wind'), null, 'and tops out as before');
+
+// buy the whole tree in listed order: always possible, never locked
+for (const u of UPGRADES) while (upgradeCost(cy, u.id) !== null) assert.equal(buyUpgrade(cy, u.id), true, `${u.id} can be bought in tree order`);
+assert.ok(UPGRADES.every((u) => cy.upgrades[u.id] === u.costs.length));
+
+// effects of a full tree against a bare hero
+const rhOf = (profile: number) => ({ profile, hp: 1, slots: [null, null, null], passive: null, pack: Array(6).fill(null), gold: 0, charmHp: 0, charmDmg: 0, deaths: 0, earned: 0 });
+t.heroes.push({ name: 'Bare', color: 1, renown: 0, upgrades: {}, kit: [null, null, null, null] });
+const full = heroStats(t, rhOf(0));
+const bare = heroStats(t, rhOf(1));
+assert.deepEqual(
+  [bare.iframes, bare.heartBonus, bare.trapDmg, bare.cdMult, bare.knockMult, bare.bigMult, bare.ambushMult, bare.pull, bare.arrowDrop, bare.nose],
+  [BASE_IFRAMES, 0, 3, 1, 1, 1, 1, BASE_PULL, ARROW_DROP_CHANCE, false],
+  'a hero with no upgrades plays exactly as before',
+);
+assert.equal(full.iframes, BASE_IFRAMES + 450);
+assert.equal(full.heartBonus, 3);
+assert.equal(full.trapDmg, 1);
+assert.ok(Math.abs(full.cdMult - 0.82) < 1e-9);
+assert.equal(full.knockMult, 1.5);
+assert.ok(Math.abs(full.bigMult - 1.3) < 1e-9);
+assert.equal(full.ambushMult, 1.5);
+assert.equal(full.pull, BASE_PULL + 28);
+assert.ok(Math.abs(full.arrowDrop - (ARROW_DROP_CHANCE + 0.09)) < 1e-9);
+assert.equal(full.nose, true);
+
+// Packrat and Deep Quiver change what a fresh stack holds
+assert.equal(outfit(cy, newStack('knives')).charges, Math.round(14 * 1.6));
+assert.equal(outfit(cy, newStack('bombs')).charges, 8);
+assert.equal(outfit(cy, newStack('bow')).charges, 96);
+assert.ok(96 <= ARROW_MAX);
+assert.equal(outfit(t.heroes[1], newStack('bow')).charges, 60);
+assert.equal(outfit(cy, newStack('club')).charges, undefined);
+
+// Quartermaster, Wider Offer, Second Look
+assert.equal(kitPrice(cy, 'bow'), Math.ceil(ITEMS.bow.kit * 0.7));
+assert.equal(kitPrice(t.heroes[1], 'bow'), ITEMS.bow.kit);
+assert.equal(kitOffer(t, 0).length, KIT_OFFER_SIZE + 1, 'Wider Offer adds a fifth choice');
+assert.equal(kitOffer(t, 1).length, KIT_OFFER_SIZE);
+assert.equal(canRerollKit(t, 1), false, 'no re-roll without Second Look');
+const firstOffer = kitOffer(t, 0);
+assert.equal(toggleKitItem(t, 0, firstOffer[0]), 'added');
+assert.equal(rerollKit(t, 0), true);
+assert.notDeepEqual(kitOffer(t, 0), firstOffer, 'the re-roll draws a different offer');
+assert.deepEqual(cy.kit, [null, null, null, null], 'and clears what was chosen');
+assert.equal(rerollKit(t, 0), false, 'only once per run');
+assert.deepEqual(kitOffer(t, 0), kitOffer(t, 0));
+
+// Pocket Change, Haggler, Cartographer
+t.knowledge.map1 = { secrets: [], shortcuts: [], bestCheckpoint: 2, clears: 0, explored: packBits(Uint8Array.from([1, 0, 1, 1, 0, 0, 0, 0, 1])) };
+cy.renown = 1000;
+const picked = kitOffer(t, 0)[0];
+assert.equal(toggleKitItem(t, 0, picked), 'added');
+const r2 = createRun(t, [0, 1], 'map1');
+t.run = r2;
+assert.equal(cy.renown, 1000 - kitPrice(cy, picked), 'the kit is charged at the discounted price');
+assert.equal(canRerollKit(t, 0), true, 'the re-roll comes back for the next run');
+assert.equal(r2.heroes[0].gold, 45);
+assert.equal(r2.heroes[1].gold, 0);
+assert.equal(r2.explored, t.knowledge.map1.explored, 'a party with a Cartographer starts with the old map');
+assert.equal(createRun(t, [1], 'map1').explored, '', 'a party without one starts blind');
+t.runsPlayed--;
+const entry = shopStock(r2, t, 2)[0];
+assert.equal(shopPrice(t, r2.heroes[0], entry), Math.ceil(entry.price * 0.76));
+assert.equal(shopPrice(t, r2.heroes[1], entry), entry.price);
+r2.heroes[0].gold = 45 + 20; // found 20, never spent the starting 45
+r2.heroes[1].gold = 7;
+r2.explored = packBits(Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 1]));
+const before = [cy.renown, t.heroes[1].renown];
+const sum2 = finishRun(t, false, []);
+assert.equal(sum2.rows[0].gold, 20, 'starting gold does not turn into renown');
+assert.equal(cy.renown, before[0] + 20);
+assert.equal(t.heroes[1].renown, before[1] + 7);
+assert.deepEqual(Array.from(unpackBits(t.knowledge.map1.explored!, 10)), [1, 1, 1, 1, 0, 0, 0, 0, 1, 1], 'explored tiles accumulate across runs');
+assert.equal(mergeBits('', ''), '');
+
 console.log('All rule checks passed');

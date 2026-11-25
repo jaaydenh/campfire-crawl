@@ -6,9 +6,9 @@ import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS, RARITY_NAMES, type ItemDef } from '../data/items';
 import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
-import { UPGRADES } from '../data/upgrades';
+import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
 import { scene } from '../game/scene';
-import { giveItem, heroStats, kitCost, kitOffer, shopStock, toggleKitItem, trimKit, upgradeCost, type RunSummary } from '../run';
+import { buyUpgrade, canRerollKit, giveItem, heroStats, kitCost, kitOffer, kitPrice, outfit, rerollKit, shopPrice, shopStock, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
 import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, type ItemStack, type RunHero } from '../types';
 import { HERO_COLORS, drawMap, esc, ico } from './hud';
@@ -83,9 +83,9 @@ function onKey(e: KeyboardEvent): void {
         def.click();
       }
     } else if (e.code === 'Escape' || (current === 'inventory' && (e.code === 'Tab' || e.code === 'KeyI')) || (current === 'map' && e.code === 'KeyM')) {
-      if (['inventory', 'map', 'pause', 'bestiary'].includes(current)) {
+      if (['inventory', 'map', 'pause', 'bestiary', 'upgrades'].includes(current)) {
         e.preventDefault();
-        if (current === 'bestiary') hubScreen();
+        if (current === 'bestiary' || current === 'upgrades') hubScreen();
         else closeScreen();
       }
     }
@@ -112,7 +112,7 @@ function describe(id: string, charges?: string): string {
   if (!d) return '';
   const tags = [RARITY_NAMES[d.rarity], d.cat, d.slot === 'passive' ? 'passive slot' : 'active slot'];
   if (d.ammo) tags.push(`${charges || d.charges} arrows`);
-  else if (d.charges) tags.push(`${charges ?? d.charges} of ${d.charges} uses left`);
+  else if (d.charges) tags.push(`${charges || d.charges} uses left`);
   if (d.cooldown && !d.hold) tags.push(`${(d.cooldown / 1000).toFixed(1)}s cooldown`);
   return `<b class="r${d.rarity}">${esc(d.name)}</b><span class="muted"> ${tags.join(' · ')}</span><br>${esc(d.desc)}`;
 }
@@ -233,26 +233,26 @@ export function hubScreen(): void {
 
   let detail = '<p class="muted">Add a hero to begin. Each player gets their own.</p>';
   if (p) {
-    const ups = UPGRADES.map((u) => {
-      const lv = p.upgrades[u.id] ?? 0;
-      const cost = upgradeCost(p, u.id);
-      return `<div class="uprow"><b class="upname">${u.name}</b><span class="muted pips">${'●'.repeat(lv)}${'○'.repeat(u.costs.length - lv)}</span><span class="muted small grow">${u.desc}</span>
-        ${cost === null ? '<span class="muted">Max</span>' : `<button class="btn tiny" data-act="buy" data-id="${u.id}" ${cost > p.renown ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`}</div>`;
-    }).join('');
+    const levels = UPGRADES.reduce((n, u) => n + (p.upgrades[u.id] ?? 0), 0);
+    const levelsMax = UPGRADES.reduce((n, u) => n + u.costs.length, 0);
+    const ready = UPGRADES.filter((u) => !upgradeLock(p, u.id) && (upgradeCost(p, u.id) ?? Infinity) <= p.renown).length;
     const kc = kitCost(p);
     const activeFull = p.kit.slice(0, 3).every(Boolean);
     const offers = kitOffer(s, selHero)
       .map((id) => {
         const d = ITEMS[id];
         const chosen = p.kit.includes(id);
-        const refund = d.slot === 'passive' && p.kit[3] ? ITEMS[p.kit[3]].kit : 0;
-        const blocked = !chosen && (kc - refund + d.kit > p.renown || (d.slot === 'active' && activeFull));
-        return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${chosen ? 'in kit · ' : ''}${ico(IC.Renown, 'sm')}${d.kit}</span></button>`;
+        const price = kitPrice(p, id);
+        const refund = d.slot === 'passive' && p.kit[3] ? kitPrice(p, p.kit[3]) : 0;
+        const blocked = !chosen && (kc - refund + price > p.renown || (d.slot === 'active' && activeFull));
+        return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${chosen ? 'in kit · ' : ''}${ico(IC.Renown, 'sm')}${price}</span></button>`;
       })
       .join('');
     detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${p.renown} renown to spend</span></h3>
-      <h4>Permanent upgrades</h4>${ups}
-      <h4>Starter kit <span class="muted small">${kc ? `costs ${kc} renown at run start` : 'four offers, new every run'}</span></h4>
+      <h4>Permanent upgrades <span class="muted small">${levels} of ${levelsMax} levels bought</span></h4>
+      <div class="row"><button class="btn" data-act="upgrades">Open upgrade tree</button><span class="muted small">${ready ? `${ready} within reach right now` : 'nothing affordable yet'}</span></div>
+      <h4>Starter kit <span class="muted small">${kc ? `costs ${kc} renown at run start` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
+        ${p.upgrades.look ? `<button class="btn tiny ghost" data-act="reroll" ${canRerollKit(s, selHero) ? '' : 'disabled'}>${canRerollKit(s, selHero) ? 'Re-roll offer' : 'Re-roll used'}</button>` : ''}</h4>
       <div class="picker">${offers}</div>
       <div id="desc" class="desc"></div>
       ${s.run ? '' : `<button class="btn ghost tiny danger" data-act="retire">Retire this hero</button>`}`;
@@ -327,13 +327,10 @@ export function hubScreen(): void {
           app.saveNow();
           hubScreen();
         }, hubScreen),
-      buy: (el) => {
-        const cost = upgradeCost(p, el.dataset.id!);
-        if (cost === null || cost > p.renown) return;
-        p.renown -= cost;
-        p.upgrades[el.dataset.id!] = (p.upgrades[el.dataset.id!] ?? 0) + 1;
-        if (kitCost(p) > p.renown) p.kit = [null, null, null, null];
-        audio.sfx('buy');
+      upgrades: () => upgradesScreen(),
+      reroll: () => {
+        if (!rerollKit(s, selHero)) return;
+        audio.sfx('ui');
         app.saveNow();
         hubScreen();
       },
@@ -366,6 +363,57 @@ export function hubScreen(): void {
   // every click redraws the screen: keep the hero panel where the player had scrolled it
   const panel = modal.querySelector('.detail');
   if (panel) panel.scrollTop = scrolled;
+}
+
+/** The upgrade tree of the selected hero: four paths side by side. */
+function upgradesScreen(): void {
+  const s = G.save!;
+  const p = s.heroes[selHero];
+  if (!p) return hubScreen();
+  const node = (id: string): string => {
+    const u = UPGRADE[id];
+    const lv = p.upgrades[id] ?? 0;
+    const cost = upgradeCost(p, id);
+    const lock = upgradeLock(p, id);
+    const action =
+      cost === null
+        ? '<span class="muted small">Max</span>'
+        : lock
+          ? ico(IC.Lock, 'sm')
+          : `<button class="btn tiny" data-act="buy" data-id="${id}" ${cost > p.renown ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`;
+    return `<div class="upnode d${upgradeDepth(id)} ${lv ? 'own' : ''} ${lock ? 'locked' : ''}" title="${esc(u.more ?? u.desc)}">
+      <div class="l1"><b>${u.name}</b><span class="muted pips">${'●'.repeat(lv)}${'○'.repeat(u.costs.length - lv)}</span></div>
+      <div class="l2"><span class="muted small">${u.desc}</span>${action}</div>
+      ${lock ? `<div class="need">Needs ${UPGRADE[lock.id].name} ${lock.level}</div>` : ''}</div>`;
+  };
+  const cols = PATHS.map(
+    (path) => `<div class="panel upcol"><div class="l1"><h3>${path.name}</h3><span class="muted small">${path.blurb}</span></div>${UPGRADES.filter((u) => u.path === path.id).map((u) => node(u.id)).join('')}</div>`,
+  ).join('');
+  const tabs = s.heroes
+    .map((h, i) => `<button class="btn tiny ${i === selHero ? '' : 'ghost'}" data-act="hero" data-i="${i}">${esc(h.name)} ${ico(IC.Renown, 'sm')}${h.renown}</button>`)
+    .join('');
+  show(
+    'upgrades',
+    `<div class="screen upgrades">
+      <div class="hubhead"><h2>Upgrades</h2>${tabs}<span class="grow"></span><span class="muted small">Each upgrade opens once the one above it is high enough.</span>
+        <button class="btn ghost tiny" data-act="back" data-default>Back to camp</button></div>
+      <div class="upcols">${cols}</div>
+    </div>`,
+    {
+      back: hubScreen,
+      hero: (el) => {
+        selHero = Number(el.dataset.i);
+        upgradesScreen();
+      },
+      buy: (el) => {
+        if (!buyUpgrade(p, el.dataset.id!)) return;
+        if (kitCost(p) > p.renown) p.kit = [null, null, null, null];
+        audio.sfx('buy');
+        app.saveNow();
+        upgradesScreen();
+      },
+    },
+  );
 }
 
 function bestiaryScreen(): void {
@@ -609,7 +657,7 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
         const d = e.item ? ITEMS[e.item.id] : null;
         const label = d ? `<span class="r${d.rarity}">${esc(d.name)}</span>` : e.kind === 'heal' ? 'Bandages: heal 10 HP' : e.kind === 'charmHp' ? 'Vigor charm: +4 max HP this run' : 'Might charm: +10% damage this run';
         const icon = d ? d.icon : e.kind === 'heal' ? IC.Heal : e.kind === 'charmHp' ? IC.CharmHp : IC.CharmDmg;
-        return `<button class="pick" data-act="shop" data-key="${e.key}" ${d ? `data-item="${d.id}"` : ''} ${e.price > buyer.gold ? 'disabled' : ''}>${ico(icon, 'sm')}${label}<span class="cost">${ico(IC.GoldUI, 'sm')}${e.price}</span></button>`;
+        return `<button class="pick" data-act="shop" data-key="${e.key}" ${d ? `data-item="${d.id}"` : ''} ${shopPrice(s, buyer, e) > buyer.gold ? 'disabled' : ''}>${ico(icon, 'sm')}${label}<span class="cost">${ico(IC.GoldUI, 'sm')}${shopPrice(s, buyer, e)}</span></button>`;
       })
       .join('')}</div>`;
   }
@@ -644,9 +692,11 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
       shop: (el) => {
         const buyer = r.heroes[shopBuyer];
         const e = shopStock(r, s, index).find((x) => x.key === el.dataset.key);
-        if (!e || e.price > buyer.gold) return;
+        if (!e) return;
+        const price = shopPrice(s, buyer, e);
+        if (price > buyer.gold) return;
         if (e.kind === 'item') {
-          if (!giveItem(buyer, e.item!)) return toast('Their pack is full.', 'bad');
+          if (!giveItem(buyer, outfit(s.heroes[buyer.profile], e.item!))) return toast('Their pack is full.', 'bad');
         } else if (e.kind === 'heal') {
           const max = heroStats(s, buyer).maxHp;
           if (buyer.hp >= max) return toast('Already at full health.', 'info');
@@ -655,7 +705,7 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
           buyer.charmHp++;
           buyer.hp += 4;
         } else buyer.charmDmg++;
-        buyer.gold -= e.price;
+        buyer.gold -= price;
         if (e.kind !== 'heal') r.flags.push(`shop:${index}:${e.key}`);
         audio.sfx('buy');
         redraw();

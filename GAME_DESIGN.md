@@ -180,11 +180,47 @@ Each section targets 3-5 minutes; boss sections run longer.
 
 | What | Owned by | How |
 |---|---|---|
-| Stat upgrades: max HP, damage, speed, light radius, extra party lives | Each hero | Bought at the hub with meta currency |
+| Upgrade tree: 23 permanent upgrades in four paths (see below) | Each hero | Bought at the hub with meta currency |
 | Starter kit | Each hero, per run | Before each run every hero is offered 4 random items from the unlocked pool (one is always a reusable weapon) and may buy any of them; not kept |
 | Item pool | Save file | Grows from boss kills and secrets |
 | Map knowledge: found secrets, open shortcuts, bestiary | Save file | Recorded on discovery; shortcuts stay open in later runs |
 | Map and tier unlocks | Save file | Beat a map to unlock the next; beat map 8 to unlock tiers |
+
+### Upgrade tree
+
+Each hero has their own tree. An upgrade opens once the upgrade it grows from
+reaches the level shown; five are open from the start. Nothing is exclusive and
+nothing is refunded. An upgrade a hero already owns stays open whatever the tree
+says.
+
+| Path | Upgrade | Levels | Each level | Opens at |
+|---|---|---|---|---|
+| Body | Vitality | 5 | +4 max HP | start |
+| | Hearty | 3 | Hearts heal +1 HP | Vitality 1 |
+| | Thick Skin | 3 | +0.15s invulnerability after a hit | Vitality 2 |
+| | Trap Sense | 2 | -1 damage from spikes and arrow traps (never below 1) | Thick Skin 1 |
+| | Second Wind | 2 | +1 party life each run | Vitality 3 |
+| Arms | Might | 5 | +15% damage | start |
+| | Heavy Blows | 2 | +25% melee knockback | Might 1 |
+| | Giant Slayer | 3 | +10% damage to bosses and monster generators | Heavy Blows 2 |
+| | Quick Hands | 3 | -6% cooldowns | Might 2 |
+| | Packrat | 3 | +20% uses on knives, bombs and scrolls | Might 1 |
+| | Deep Quiver | 3 | +12 arrows on a new bow, +3% arrow pile chance | Packrat 1 |
+| Scout | Swiftness | 3 | +5% move speed | start |
+| | Long Reach | 2 | Pickups fly to the hero from further away | Swiftness 1 |
+| | Opening Strike | 2 | +25% damage to monsters that have not noticed the hero | Swiftness 2 |
+| | Keen Eyes | 3 | +1 light radius | start |
+| | Treasure Nose | 1 | A chime within 7 tiles of an undiscovered secret | Keen Eyes 2 |
+| | Cartographer | 1 | The party starts with everything explored on this map in earlier runs | Keen Eyes 3 |
+| Trade | Fortune | 3 | +15% gold found | start |
+| | Pocket Change | 3 | Start each run with +15 gold (never converts to renown) | Fortune 1 |
+| | Haggler | 3 | -8% merchant prices | Fortune 2 |
+| | Quartermaster | 3 | -10% starter kit cost | Fortune 1 |
+| | Wider Offer | 1 | A fifth starter kit offer | Quartermaster 2 |
+| | Second Look | 1 | One re-roll of the starter kit offer per run | Wider Offer 1 |
+
+Deliberately left out: healing at campfires, bonus renown, a death-saving
+upgrade and a bigger backpack.
 
 Difficulty target: a brand-new party on fists should usually run out of lives
 around the middle of map 1, and clear it on the second or third run. Map N is

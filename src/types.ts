@@ -23,6 +23,8 @@ export interface HeroProfile {
   upgrades: Record<string, number>;
   /** Starter kit chosen for the next run: 3 active slots then the passive slot. Paid for when the run starts. */
   kit: (string | null)[];
+  /** The run number (SaveFile.runsPlayed) whose kit offer this hero has re-rolled with Second Look. */
+  rerollAt?: number;
 }
 
 export interface MapKnowledge {
@@ -30,6 +32,8 @@ export interface MapKnowledge {
   shortcuts: string[];
   bestCheckpoint: number;
   clears: number;
+  /** Every tile any party has explored here, packed like RunState.explored. Used by the Cartographer upgrade. */
+  explored?: string;
 }
 
 export interface RunHero {
@@ -43,6 +47,8 @@ export interface RunHero {
   charmDmg: number;
   deaths: number;
   earned: number; // renown bonuses earned this run
+  /** Gold handed out at the start by Pocket Change. It can be spent, but never turns into renown. */
+  startGold?: number;
 }
 
 export interface GroundItem {

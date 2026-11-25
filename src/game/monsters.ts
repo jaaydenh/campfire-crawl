@@ -3,7 +3,7 @@ import { F, O } from '../art/manifest';
 import { audio } from '../audio/audio';
 import { G, run } from '../core';
 import { CHIEF_PHASES, GENERATOR_SPAWN, MONSTERS } from '../data/monsters';
-import { ARROW_DROP_CHANCE, bowEquipped, hasFlag, setFlag } from '../run';
+import { bowEquipped, hasFlag, setFlag } from '../run';
 import { seeded } from '../rng';
 import { TILE } from '../types';
 import { angDiff, type Mon } from './ents';
@@ -134,6 +134,8 @@ export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: num
     ky *= 0.12;
   }
   if (m.def.ai === 'generator') kx = ky = 0;
+  if (m.boss || m.def.ai === 'generator') dmg *= s.stats.bigMult; // Giant Slayer
+  else if (!m.alerted) dmg *= s.stats.ambushMult; // Opening Strike
   m.hp -= dmg;
   m.flashT = 90;
   m.kx += kx;
@@ -164,7 +166,7 @@ function kill(s: GameScene, m: Mon): void {
     s.dropCoin(m.x, m.y, a + Math.floor(Math.random() * (b - a + 1)));
   }
   if (Math.random() < (hurt ? 0.25 : 0.12)) s.dropHeart(m.x, m.y);
-  if (bowEquipped(run().heroes[run().active]) && Math.random() < ARROW_DROP_CHANCE) s.dropArrows(m.x, m.y);
+  if (bowEquipped(run().heroes[run().active]) && Math.random() < s.stats.arrowDrop) s.dropArrows(m.x, m.y);
   if (m.boss) {
     setFlag(r, 'boss:dead');
     s.boss = null;

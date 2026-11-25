@@ -52,6 +52,7 @@ export function abandonRun(): void {
 function endRun(won: boolean): void {
   const s = G.save!;
   const r = run();
+  if (scene.loaded) scene.syncRun(); // so the map knowledge kept after the run includes this attempt's exploring
   const def = getMap(r.mapId);
   const unlocked: string[] = [];
   if (won) {
