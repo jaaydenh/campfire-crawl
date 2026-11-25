@@ -26,6 +26,10 @@ Then open http://localhost:5183.
 | M | Map |
 | Esc | Pause |
 
+Each hero can switch to **facing aim** in their settings (at the camp, or from the
+pause menu): abilities go the way the hero faces, with aim assist, and slots 1 and 2
+move to J and K.
+
 ## Project layout
 
 - `src/data/` - items, monsters, upgrades and maps. `map1.ts` is the whole first map.

@@ -3,8 +3,9 @@ import { IC, T } from '../art/manifest';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { scene } from '../game/scene';
+import { SLOT_KEYS } from '../input';
 import type { World } from '../game/world';
-import { TILE } from '../types';
+import { TILE, controlsOf } from '../types';
 import { musicIcon, toggleMusic } from './sound';
 
 /** Name colour per hero look; its length is the number of looks on offer. */
@@ -17,8 +18,6 @@ let mini: CanvasRenderingContext2D;
 let last: Record<string, string> = {};
 let lastFog = -1;
 let lastHeroTile = -1;
-
-const SLOT_KEYS = ['L-click', 'R-click', 'Space'];
 
 export function initHud(root: HTMLElement): void {
   el = document.createElement('div');
@@ -39,7 +38,7 @@ export function initHud(root: HTMLElement): void {
     <div class="hud-boss" data-h="boss" hidden><div class="boss-name" data-h="bossname"></div><div class="bossbar"><div class="bossfill" data-h="bossfill"></div></div><div class="boss-pips" data-h="bosspips"></div></div>
     <div class="hud-prompt" data-h="prompt"></div>
     <div class="hud-slots">
-      ${[0, 1, 2].map((i) => `<div class="slot"><div data-h="s${i}"></div><div class="cdmask" data-h="cd${i}"></div><span class="key">${SLOT_KEYS[i]}</span></div>`).join('')}
+      ${[0, 1, 2].map((i) => `<div class="slot"><div data-h="s${i}"></div><div class="cdmask" data-h="cd${i}"></div><span class="key" data-h="k${i}"></span></div>`).join('')}
       <div class="slot passive"><div data-h="s3"></div><span class="key">Passive</span></div>
     </div>
     <button class="btn ghost iconbtn hud-music" data-h="music" tabindex="-1" title="Music on / off" aria-label="Music on / off"></button>`;
@@ -95,7 +94,9 @@ export function hudFrame(): void {
   set('section', esc(scene.def.sectionNames[r.checkpoint] ?? ''));
   const total = scene.def.checkpoints.length;
   set('pips', Array.from({ length: total }, (_, i) => `<i class="pip ${i <= r.checkpoint ? 'on' : ''}"></i>`).join('') + '<i class="pip bosspip"></i>');
+  const keys = SLOT_KEYS[controlsOf(p)];
   for (let i = 0; i < 3; i++) {
+    set(`k${i}`, keys[i]);
     const s = rh.slots[i];
     const def = ITEMS[s?.id ?? 'fists'];
     set(`s${i}`, ico(def.icon) + (s?.charges !== undefined ? `<b class="ch ${s.charges <= 0 ? 'zero' : ''}">${s.charges}</b>` : ''));

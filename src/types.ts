@@ -15,6 +15,12 @@ export interface ItemStack {
   charges?: number;
 }
 
+/**
+ * How a hero is steered. 'mouse': abilities go toward the cursor. 'facing': abilities go the way the hero
+ * faces (the way they last moved), with aim assist turning swings and shots toward a nearby monster.
+ */
+export type ControlMode = 'mouse' | 'facing';
+
 /** A hero that persists between runs inside a save file. */
 export interface HeroProfile {
   name: string;
@@ -25,7 +31,11 @@ export interface HeroProfile {
   kit: (string | null)[];
   /** The run number (SaveFile.runsPlayed) whose kit offer this hero has re-rolled with Second Look. */
   rerollAt?: number;
+  /** Control style of the player who owns this hero. Missing on older saves, which means 'mouse'. */
+  controls?: ControlMode;
 }
+
+export const controlsOf = (p: HeroProfile): ControlMode => (p.controls === 'facing' ? 'facing' : 'mouse');
 
 export interface MapKnowledge {
   secrets: string[];
