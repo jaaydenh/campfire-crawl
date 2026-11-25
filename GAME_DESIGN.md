@@ -53,8 +53,9 @@ they are my proposals and the first things to change if they feel wrong.
 3. **Camp** at each checkpoint: autosave, everyone rests up to at least half
    health, trade items, visit the merchant if one is there, then hand the
    controls to the next player.
-4. **End.** The run ends when the map's boss dies (next map unlocks) or the lives
-   pool hits zero. In-run gear is lost; gold becomes meta currency; back to the hub.
+4. **End.** The run ends when the map's boss dies (next map unlocks) or a death
+   leaves the party with no lives (see Lives). In-run gear is lost; gold becomes
+   meta currency; back to the hub.
 
 ## 3. Turn rules
 
@@ -82,11 +83,13 @@ they are my proposals and the first things to change if they feel wrong.
 - The next hero to come within about a tile of the body wins the life back for
   the party. Solo, the same player runs back to their own body.
 - A hero who dies while another is still waiting loses both lives, and leaves
-  nobody to rescue. So a death costs at most what it did before rescues.
+  nobody to rescue. So the two deaths together cost two lives, the same as
+  before rescues: a rescue can save a life but never costs an extra one.
 - The body stays until a hero reaches it or another hero dies, even after the
   party moves on to later campfires.
 - The party's last life can be rescued too: with no lives in the pool and a hero
-  waiting, the next player gets one attempt. Dying on it ends the run.
+  waiting, the next player gets one attempt. Dying on it loses the waiting life
+  and ends the run.
 
 ### Comeback health and campfire rest
 
@@ -102,8 +105,10 @@ they are my proposals and the first things to change if they feel wrong.
   bought through meta upgrades.
 - Earned in a run: +1 for each boss phase broken, +1 for each life shrine found
   (1-2 hidden per map). **(default amounts)**
-- The run ends when a hero dies with no life left: none in the pool for a first
-  death, or one or fewer when it also loses a hero waiting for rescue.
+- A life waiting for rescue is not in the pool. Every death takes one life from
+  the pool if it has one, and also loses the waiting life if there is one.
+- The run ends when a death leaves the party with no lives at all: none in the
+  pool and none waiting for rescue.
 
 ### Bosses
 

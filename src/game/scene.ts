@@ -432,7 +432,7 @@ export class GameScene extends Phaser.Scene {
     const h = this.hero!;
     if (!f || !this.fallenSpr || this.ending) return;
     this.fallenSpr.token.setY(f.y - 14 + Math.round(Math.sin(this.clock / 260) * 2));
-    if (Math.hypot(f.x - h.x, f.y - h.y) >= RESCUE_REACH) return;
+    if (Math.hypot(f.x - h.x, f.y - h.y) > RESCUE_REACH) return;
     const saved = rescueFallen(r);
     if (saved === null) return;
     const name = G.save!.heroes[r.heroes[saved].profile].name;
