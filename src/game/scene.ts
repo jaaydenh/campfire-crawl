@@ -5,10 +5,11 @@ import { audio } from '../audio/audio';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
-import { input } from '../input';
+import { input, moveKeys, slotHeld } from '../input';
 import { ARROW_MAX, ARROW_PILE, addArrows, fillMissingCharges, giveItem, outfit, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
-import { TILE, VIEW_H, VIEW_W, type GroundItem, type ItemStack } from '../types';
+import { TILE, VIEW_H, VIEW_W, controlsOf, type GroundItem, type ItemStack } from '../types';
 import type { MapDef } from '../world/mapdef';
+import { MELEE_CONE, MELEE_SLACK, RANGED_CONE, leadAngle, pickTarget, type AimTarget } from './aim';
 import { angDiff, type Bomb, type Hero, type Mon, type Pickup, type Proj } from './ents';
 import { damageMon, drawTelegraphs, spawnMonsters, updateMonsters } from './monsters';
 import { World, type Obj } from './world';
@@ -19,8 +20,61 @@ export const DEPTH = { floor: 2, ent: 10, fx: 60, fog: 100, top: 110 };
 const entDepth = (y: number) => DEPTH.ent + y / 100;
 const HERO_R = 4;
 const NOSE_RANGE = 7; // tiles at which Treasure Nose notices a secret
+const BOMB_THROW = 88; // furthest a bomb can be thrown, in pixels
 const tx = (px: number) => Math.floor(px / TILE);
 const center = (t: number) => t * TILE + TILE / 2;
+
+interface Swing {
+  range: number; // pixels
+  half: number; // half-width of the arc, radians
+  dmg: number;
+  knock: number;
+  scale: number;
+  frame: F;
+  sfx: 'punch' | 'swing';
+}
+const MELEE: Record<string, Swing> = {
+  fists: { range: 15, half: 0.95, dmg: 2, knock: 70, scale: 0.7, frame: F.Punch, sfx: 'punch' },
+  club: { range: 20, half: 1.0, dmg: 3.5, knock: 190, scale: 1, frame: F.Slash0, sfx: 'swing' },
+  sword: { range: 23, half: 1.3, dmg: 4, knock: 100, scale: 1.15, frame: F.Slash0, sfx: 'swing' },
+  cleaver: { range: 25, half: 1.25, dmg: 7, knock: 260, scale: 1.4, frame: F.Slash0, sfx: 'swing' },
+  spear: { range: 36, half: 0.3, dmg: 4.5, knock: 110, scale: 1, frame: F.Thrust, sfx: 'swing' },
+};
+
+interface Shot {
+  frame: F;
+  speed: number; // pixels per second
+  dmg: number;
+  life: number; // ms
+  fire?: boolean;
+  sfx: 'shoot' | 'fire';
+}
+const SHOTS: Record<string, Shot> = {
+  bow: { frame: F.Arrow, speed: 240, dmg: 3.5, life: 900, sfx: 'shoot' },
+  knives: { frame: F.Knife, speed: 270, dmg: 2.5, life: 520, sfx: 'shoot' },
+  firebolt: { frame: F.Firebolt0, speed: 175, dmg: 5, life: 1200, fire: true, sfx: 'fire' },
+};
+
+/** Where the aim assist looks for an item: how far, how wide, and how fast its shot flies (0 when it is not a shot). */
+interface Reach {
+  kind: 'swing' | 'shot' | 'throw';
+  reach: number;
+  cone: number;
+  speed: number;
+  fire: boolean;
+}
+/** What the aim assist settled on: a monster, or an object when `mon` is null. */
+type Aimed = AimTarget & { mon: Mon | null };
+
+function aimReach(id: string): Reach | null {
+  const sw = MELEE[id];
+  const sh = SHOTS[id];
+  if (sw) return { kind: 'swing', reach: sw.range + MELEE_SLACK, cone: MELEE_CONE, speed: 0, fire: false };
+  // a shot fades at the end of its life: stop a little short, so the assist never picks a target the shot dies in front of
+  if (sh) return { kind: 'shot', reach: ((sh.speed * sh.life) / 1000) * 0.92, cone: RANGED_CONE, speed: sh.speed, fire: !!sh.fire };
+  if (id === 'bombs') return { kind: 'throw', reach: BOMB_THROW, cone: RANGED_CONE, speed: 0, fire: false };
+  return null;
+}
 
 export let scene: GameScene;
 
@@ -44,6 +98,10 @@ export class GameScene extends Phaser.Scene {
   fogVersion = 0;
   zone: 'forest' | 'cave' = 'forest';
   tele!: Phaser.GameObjects.Graphics;
+  /** Facing controls: the facing tick and the brackets around what the aim assist would pick. */
+  private aimMark!: Phaser.GameObjects.Graphics;
+  /** Smoothed monster velocities in pixels per second, so assisted shots can lead a moving target. */
+  private drift = new WeakMap<Mon, { x: number; y: number; vx: number; vy: number }>();
 
   private map: Phaser.Tilemaps.Tilemap | null = null;
   private layer: Phaser.Tilemaps.TilemapLayer | null = null;
@@ -72,6 +130,7 @@ export class GameScene extends Phaser.Scene {
       for (let i = 0; i < frames; i++) tex.add(i, 0, i * w, 0, w, h);
     }
     this.tele = this.add.graphics().setDepth(DEPTH.fx - 1);
+    this.aimMark = this.add.graphics().setDepth(DEPTH.fx - 1);
     this.cameras.main.setRoundPixels(true);
     this.events.emit('ready');
   }
@@ -127,12 +186,14 @@ export class GameScene extends Phaser.Scene {
     this.layer = null;
     this.map = null;
     this.tele?.clear();
+    this.aimMark?.clear();
     this.loaded = false;
     this.paused = true;
     this.boss = null;
   }
 
   private clearActors(): void {
+    this.aimMark?.clear();
     if (this.hero) {
       this.hero.spr.destroy();
       this.hero.shield.destroy();
@@ -184,7 +245,7 @@ export class GameScene extends Phaser.Scene {
     const color = profileOf(rh).color;
     const spr = this.add.image(0, 0, `hero${color}`, 0).setOrigin(0.5, 0.7);
     const shield = this.add.image(0, 0, 'fx', F.Shield).setVisible(false);
-    this.hero = { x: center(cp.x), y: center(cp.y), kx: 0, ky: 0, aim: Math.PI / 2, cd: [0, 0, 0], cdMax: [1, 1, 1], iframes: 1000, slowT: 0, blocking: false, dash: null, moving: false, walkT: 0, dead: false, spr, shield };
+    this.hero = { x: center(cp.x), y: center(cp.y), kx: 0, ky: 0, aim: Math.PI / 2, face: Math.PI / 2, faceX: 0, faceY: 1, faceT: 0, aimHold: 0, cd: [0, 0, 0], cdMax: [1, 1, 1], iframes: 1000, slowT: 0, blocking: false, dash: null, moving: false, walkT: 0, dead: false, spr, shield };
     spawnMonsters(this);
     this.lastTile = -1;
     this.updateVision(true);
@@ -205,12 +266,14 @@ export class GameScene extends Phaser.Scene {
       this.clock += dt;
       if (!this.hero.dead) this.updateHero(dt);
       updateMonsters(this, dt);
+      this.trackMonsters(dt);
       this.updateProjectiles(dt);
       this.updateBombs(dt);
       this.updatePickups(dt);
       this.updateObjects(dt);
       this.updateVision(false);
       drawTelegraphs(this);
+      this.drawAimMark();
     }
     G.hooks.frame();
     input.endFrame();
@@ -248,8 +311,13 @@ export class GameScene extends Phaser.Scene {
 
   // ------------------------------------------------------------------ hero
 
+  /** True when the hero in play uses facing controls: abilities go where the hero faces, not toward the cursor. */
+  private get facing(): boolean {
+    return controlsOf(profileOf(activeHero())) === 'facing';
+  }
+
   private slotHeld(i: number): boolean {
-    return i === 0 ? input.buttons[0] : i === 1 ? input.buttons[2] : input.down.has('Space');
+    return slotHeld(i, controlsOf(profileOf(activeHero())));
   }
 
   private updateHero(dt: number): void {
@@ -259,8 +327,11 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) h.cd[i] = Math.max(0, h.cd[i] - dt);
     h.iframes -= dt;
     h.slowT -= dt;
-    const cam = this.cameras.main;
-    h.aim = Math.atan2(input.my + cam.scrollY - h.y, input.mx + cam.scrollX - h.x);
+    const facing = this.facing;
+    if (!facing) {
+      const cam = this.cameras.main;
+      h.aim = h.face = Math.atan2(input.my + cam.scrollY - h.y, input.mx + cam.scrollX - h.x);
+    }
 
     let mx = 0;
     let my = 0;
@@ -271,9 +342,9 @@ export class GameScene extends Phaser.Scene {
       h.y = h.dash.y0 + (h.dash.y1 - h.dash.y0) * k;
       if (k >= 1) h.dash = null;
     } else {
-      mx = (input.down.has('KeyD') || input.down.has('ArrowRight') ? 1 : 0) - (input.down.has('KeyA') || input.down.has('ArrowLeft') ? 1 : 0);
-      my = (input.down.has('KeyS') || input.down.has('ArrowDown') ? 1 : 0) - (input.down.has('KeyW') || input.down.has('ArrowUp') ? 1 : 0);
+      ({ x: mx, y: my } = moveKeys());
       h.blocking = [0, 1, 2].some((i) => rh.slots[i]?.id === 'shield' && this.slotHeld(i));
+      if (facing) this.turnHero(mx, my, dt);
       const len = Math.hypot(mx, my) || 1;
       const sp = this.stats.speed * (h.blocking ? 0.5 : 1) * (h.slowT > 0 ? 0.55 : 1);
       const free = this.moveBody(h, ((mx / len) * sp + h.kx) * s, ((my / len) * sp + h.ky) * s, HERO_R, false);
@@ -326,6 +397,137 @@ export class GameScene extends Phaser.Scene {
         this.reachCheckpoint(o);
         break;
       }
+    }
+  }
+
+  /** Facing controls: the hero faces the way they move, and the aim follows unless an attack has just turned it. */
+  private turnHero(mx: number, my: number, dt: number): void {
+    const h = this.hero!;
+    // a raised shield keeps its facing, so the hero can back away from what they are blocking
+    if ((mx || my) && !h.blocking) {
+      // Two keys are never let go in the same instant. Coming off a diagonal, one key on its own has to be
+      // held for a moment before it counts, or stopping would always leave the hero facing along one axis.
+      const halfDiagonal = h.faceX !== 0 && h.faceY !== 0 && (mx === 0) !== (my === 0) && (mx === h.faceX || my === h.faceY);
+      h.faceT = halfDiagonal ? h.faceT + dt : 0;
+      if (!halfDiagonal || h.faceT > 90) {
+        h.faceX = mx;
+        h.faceY = my;
+        h.faceT = 0;
+      }
+      h.face = Math.atan2(h.faceY, h.faceX);
+    } else h.faceT = 0;
+    h.aimHold -= dt;
+    if (h.aimHold <= 0) h.aim = h.face;
+  }
+
+  /**
+   * Facing controls: turns the hero toward the best target ahead before an item is used, leading a walking
+   * monster when the item is a shot. Returns what it turned to, or null when the item goes straight ahead.
+   */
+  private assist(id: string): Aimed | null {
+    const h = this.hero!;
+    const a = this.facing ? aimReach(id) : null;
+    if (!a) return null;
+    const t = this.aimTarget(a);
+    h.aim = h.face;
+    if (t) {
+      const v = t.mon && a.speed ? this.drift.get(t.mon) : undefined;
+      h.aim = v ? leadAngle(t.x - h.x, t.y - h.y, v.vx, v.vy, a.speed) : Math.atan2(t.y - h.y, t.x - h.x);
+      h.face = h.aim; // standing still, the hero stays turned toward what they are fighting
+    }
+    h.aimHold = 160;
+    return t;
+  }
+
+  /**
+   * What the aim assist would pick for an item: a monster in sight, in reach and within the cone around the facing.
+   * With no monster there, a swing settles for a pot, and a shot for something only a shot can work: a lever, or a brazier for fire.
+   */
+  private aimTarget(a: Reach): Aimed | null {
+    const h = this.hero!;
+    const w = this.world;
+    const clear = a.kind === 'shot' ? (t: AimTarget) => this.shotClear(t) : undefined;
+    const live = this.mons.filter((m) => !m.dead && w.visible[w.idx(tx(m.x), tx(m.y))]);
+    const m = pickTarget(live, h.x, h.y, h.face, a.reach, a.cone, clear);
+    if (m) return { x: m.x, y: m.y, r: m.r, mon: m };
+    if (a.kind === 'throw') return null;
+    const wanted = (o: Obj) =>
+      a.kind === 'swing' ? o.def.type === 'pot' && !o.open : (o.def.type === 'lever' && !o.on && !w.solved(o.def.puzzle!)) || (a.fire && o.def.type === 'brazier' && !o.lit && !w.solved(o.def.puzzle!));
+    const objs = w.objs.filter((o) => wanted(o) && w.visible[w.idx(o.x, o.y)]).map((o) => ({ x: center(o.x), y: center(o.y), r: 6, mon: null }));
+    return pickTarget(objs, h.x, h.y, h.face, a.reach, a.cone, clear);
+  }
+
+  /** True when nothing solid stands between the hero and a target, so a shot aimed at it can arrive. */
+  private shotClear(t: AimTarget): boolean {
+    const h = this.hero!;
+    const d = Math.hypot(t.x - h.x, t.y - h.y);
+    const n = Math.floor((d - t.r - 6) / 5);
+    for (let i = 1; i <= n; i++) {
+      if (this.world.solid(tx(h.x + ((t.x - h.x) * i * 5) / d), tx(h.y - 2 + ((t.y - h.y) * i * 5) / d))) return false;
+    }
+    return true;
+  }
+
+  private trackMonsters(dt: number): void {
+    const s = dt / 1000;
+    for (const m of this.mons) {
+      const v = this.drift.get(m);
+      if (!v) {
+        this.drift.set(m, { x: m.x, y: m.y, vx: 0, vy: 0 });
+        continue;
+      }
+      // knockback and lunges are brief: cap them so a shot leads the monster's walk, not the shove it just took
+      const cap = m.def.speed * 1.2;
+      let vx = (m.x - v.x) / s;
+      let vy = (m.y - v.y) / s;
+      const sp = Math.hypot(vx, vy);
+      if (sp > cap) {
+        vx *= cap / sp;
+        vy *= cap / sp;
+      }
+      v.vx += (vx - v.vx) * 0.2;
+      v.vy += (vy - v.vy) * 0.2;
+      v.x = m.x;
+      v.y = m.y;
+    }
+  }
+
+  /** Facing controls have no cursor to aim with, so show the facing and mark the monster the next attack would turn to. */
+  private drawAimMark(): void {
+    const g = this.aimMark;
+    g.clear();
+    const h = this.hero;
+    if (!h || h.dead || !this.facing) return;
+    const c = Math.cos(h.face);
+    const s = Math.sin(h.face);
+    const px = Math.round(h.x + c * 13);
+    const py = Math.round(h.y - 3 + s * 13);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillTriangle(px + c * 3, py + s * 3, px - c * 2 - s * 3, py - s * 2 + c * 3, px - c * 2 + s * 3, py - s * 2 - c * 3);
+    // of the things the equipped items would turn to, mark the closest: it is the one about to matter
+    const rh = activeHero();
+    let target: Aimed | null = null;
+    let near = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const a = aimReach(rh.slots[i]?.id ?? 'fists');
+      const t = a && this.aimTarget(a);
+      if (!t) continue;
+      const d = Math.hypot(t.x - h.x, t.y - h.y);
+      if (d < near) {
+        near = d;
+        target = t;
+      }
+    }
+    if (!target) return;
+    const r = target.r + 4;
+    const x0 = Math.round(target.x) - r;
+    const y0 = Math.round(target.y - (target.mon ? 3 : 0)) - r;
+    const x1 = x0 + r * 2;
+    const y1 = y0 + r * 2;
+    g.fillStyle(0xfff2a8, 0.9);
+    for (const [x, y, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
+      g.fillRect(Math.min(x, x + dx * 3), y, 4, 1);
+      g.fillRect(x, Math.min(y, y + dy * 3), 1, 4);
     }
   }
 
@@ -463,84 +665,63 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const mult = this.stats.dmgMult;
-    const c = Math.cos(h.aim);
-    const s = Math.sin(h.aim);
-    switch (id) {
-      case 'fists':
-        this.melee(15, 0.95, 2 * mult, 70, 0.7, F.Punch, 'punch');
-        break;
-      case 'club':
-        this.melee(20, 1.0, 3.5 * mult, 190, 1, F.Slash0, 'swing');
-        break;
-      case 'sword':
-        this.melee(23, 1.3, 4 * mult, 100, 1.15, F.Slash0, 'swing');
-        break;
-      case 'cleaver':
-        this.melee(25, 1.25, 7 * mult, 260, 1.4, F.Slash0, 'swing');
-        break;
-      case 'spear':
-        this.melee(36, 0.3, 4.5 * mult, 110, 1, F.Thrust, 'swing');
-        break;
-      case 'bow':
-        this.shoot(F.Arrow, 240, 3.5 * mult, 900, {});
-        audio.sfx('shoot');
-        break;
-      case 'knives':
-        this.shoot(F.Knife, 270, 2.5 * mult, 520, {});
-        audio.sfx('shoot');
-        break;
-      case 'firebolt':
-        this.shoot(F.Firebolt0, 175, 5 * mult, 1200, { fire: true });
-        audio.sfx('fire');
-        break;
-      case 'frost': {
-        audio.sfx('frost');
-        const ring = this.add.circle(h.x, h.y, 46, 0x9fd8ff, 0.25).setStrokeStyle(2, 0xdff4ff).setDepth(DEPTH.fx).setScale(0.2);
-        this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
-        for (const m of this.mons) {
-          if (m.dead || Math.hypot(m.x - h.x, m.y - h.y) > 46 + m.r) continue;
-          m.slowT = 3000;
-          damageMon(this, m, 2 * mult, 0, 0);
-          this.fx(F.Frost, m.x, m.y - 6, 400);
+    const target = this.assist(id);
+    if (MELEE[id]) this.melee(MELEE[id], mult);
+    else if (SHOTS[id]) this.shoot(SHOTS[id], mult);
+    else {
+      switch (id) {
+        case 'frost': {
+          audio.sfx('frost');
+          const ring = this.add.circle(h.x, h.y, 46, 0x9fd8ff, 0.25).setStrokeStyle(2, 0xdff4ff).setDepth(DEPTH.fx).setScale(0.2);
+          this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 350, onComplete: () => ring.destroy() });
+          for (const m of this.mons) {
+            if (m.dead || Math.hypot(m.x - h.x, m.y - h.y) > 46 + m.r) continue;
+            m.slowT = 3000;
+            damageMon(this, m, 2 * mult, 0, 0);
+            this.fx(F.Frost, m.x, m.y - 6, 400);
+          }
+          break;
         }
-        break;
-      }
-      case 'bombs': {
-        const want = Math.min(88, Math.hypot(input.mx + this.cameras.main.scrollX - h.x, input.my + this.cameras.main.scrollY - h.y));
-        let d = 0;
-        while (d + 4 <= want && !this.world.solid(tx(h.x + c * (d + 4)), tx(h.y + s * (d + 4)))) d += 4;
-        const spr = this.add.image(h.x, h.y, 'fx', F.Bomb0).setDepth(DEPTH.fx);
-        this.bombs.push({ x: h.x, y: h.y, x0: h.x, y0: h.y, x1: h.x + c * d, y1: h.y + s * d, t: 0, spr });
-        audio.sfx('swing');
-        break;
-      }
-      case 'dash': {
-        const mvx = (input.down.has('KeyD') ? 1 : 0) - (input.down.has('KeyA') ? 1 : 0);
-        const mvy = (input.down.has('KeyS') ? 1 : 0) - (input.down.has('KeyW') ? 1 : 0);
-        const len = Math.hypot(mvx, mvy);
-        const dx = len ? mvx / len : c;
-        const dy = len ? mvy / len : s;
-        let land = 0;
-        for (let d = 2; d <= 58; d += 2) {
-          if (this.hits(h.x + dx * d, h.y + dy * d, HERO_R, true)) break;
-          if (!this.hits(h.x + dx * d, h.y + dy * d, HERO_R, false)) land = d;
+        case 'bombs': {
+          // thrown to the cursor; with facing controls, onto the monster ahead or a fixed lob when there is none
+          const reach = target ? Math.hypot(target.x - h.x, target.y - h.y) : this.facing ? 56 : Math.hypot(input.mx + this.cameras.main.scrollX - h.x, input.my + this.cameras.main.scrollY - h.y);
+          const want = Math.min(BOMB_THROW, reach);
+          const c = Math.cos(h.aim);
+          const s = Math.sin(h.aim);
+          let d = 0;
+          while (d + 4 <= want && !this.world.solid(tx(h.x + c * (d + 4)), tx(h.y + s * (d + 4)))) d += 4;
+          const spr = this.add.image(h.x, h.y, 'fx', F.Bomb0).setDepth(DEPTH.fx);
+          this.bombs.push({ x: h.x, y: h.y, x0: h.x, y0: h.y, x1: h.x + c * d, y1: h.y + s * d, t: 0, spr });
+          audio.sfx('swing');
+          break;
         }
-        if (land < 8) return;
-        h.dash = { x0: h.x, y0: h.y, x1: h.x + dx * land, y1: h.y + dy * land, t: 0, dur: 130 };
-        h.iframes = Math.max(h.iframes, 260);
-        h.kx = h.ky = 0;
-        this.fx(F.Poof0, h.x, h.y, 200);
-        audio.sfx('dash');
-        break;
+        case 'dash': {
+          const mv = moveKeys();
+          const len = Math.hypot(mv.x, mv.y);
+          const dx = len ? mv.x / len : Math.cos(h.aim);
+          const dy = len ? mv.y / len : Math.sin(h.aim);
+          let land = 0;
+          for (let d = 2; d <= 58; d += 2) {
+            if (this.hits(h.x + dx * d, h.y + dy * d, HERO_R, true)) break;
+            if (!this.hits(h.x + dx * d, h.y + dy * d, HERO_R, false)) land = d;
+          }
+          if (land < 8) return;
+          h.dash = { x0: h.x, y0: h.y, x1: h.x + dx * land, y1: h.y + dy * land, t: 0, dur: 130 };
+          h.iframes = Math.max(h.iframes, 260);
+          h.kx = h.ky = 0;
+          this.fx(F.Poof0, h.x, h.y, 200);
+          audio.sfx('dash');
+          break;
+        }
+        case 'scroll':
+          this.world.revealAround(tx(h.x), tx(h.y), 22);
+          this.updateVision(true);
+          audio.sfx('secret');
+          G.hooks.toast('The scroll burns away and the land around you is laid bare.', 'info');
+          break;
+        default:
+          return;
       }
-      case 'scroll':
-        this.world.revealAround(tx(h.x), tx(h.y), 22);
-        this.updateVision(true);
-        audio.sfx('secret');
-        G.hooks.toast('The scroll burns away and the land around you is laid bare.', 'info');
-        break;
-      default:
-        return;
     }
     h.cd[i] = h.cdMax[i] = def.cooldown * this.stats.cdMult;
     if (stack && stack.charges !== undefined) {
@@ -555,10 +736,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private melee(range: number, half: number, dmg: number, knock: number, scale: number, frame: F, sfx: 'punch' | 'swing'): void {
+  private melee(sw: Swing, mult: number): void {
     const h = this.hero!;
-    audio.sfx(sfx);
-    knock *= this.stats.knockMult;
+    const { range, half, scale, frame } = sw;
+    const dmg = sw.dmg * mult;
+    const knock = sw.knock * this.stats.knockMult;
+    audio.sfx(sw.sfx);
     const c = Math.cos(h.aim);
     const s = Math.sin(h.aim);
     const reach = frame === F.Thrust ? range * 0.55 : range * 0.6;
@@ -584,11 +767,12 @@ export class GameScene extends Phaser.Scene {
     if (landed) audio.sfx('hit');
   }
 
-  private shoot(frame: F, speed: number, dmg: number, life: number, opts: { fire?: boolean }): void {
+  private shoot(sh: Shot, mult: number): void {
     const h = this.hero!;
     const c = Math.cos(h.aim);
     const s = Math.sin(h.aim);
-    this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * speed, s * speed, { frame, dmg, life, fromHero: true, fire: !!opts.fire });
+    this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * sh.speed, s * sh.speed, { frame: sh.frame, dmg: sh.dmg * mult, life: sh.life, fromHero: true, fire: !!sh.fire });
+    audio.sfx(sh.sfx);
   }
 
   addProj(x: number, y: number, vx: number, vy: number, o: { frame: F; dmg: number; life: number; fromHero: boolean; fire?: boolean; web?: boolean; spin?: number; r?: number }): void {

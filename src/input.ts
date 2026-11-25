@@ -1,5 +1,5 @@
 // Keyboard and mouse state for the game world. Menus handle their own clicks.
-import { VIEW_H, VIEW_W } from './types';
+import { VIEW_H, VIEW_W, type ControlMode } from './types';
 
 export const input = {
   down: new Set<string>(),
@@ -19,6 +19,24 @@ export const input = {
     this.clicked = [false, false, false];
   },
 };
+
+/** What each control style calls the three ability inputs, for the HUD and the menus. */
+export const SLOT_KEYS: Record<ControlMode, string[]> = { mouse: ['L-click', 'R-click', 'Space'], facing: ['J', 'K', 'Space'] };
+
+/** True while the input for an active slot is held. The mouse buttons work in both styles; J and K only when facing. */
+export function slotHeld(i: number, mode: ControlMode): boolean {
+  if (i === 2) return input.down.has('Space');
+  return input.buttons[i === 0 ? 0 : 2] || (mode === 'facing' && input.down.has(i === 0 ? 'KeyJ' : 'KeyK'));
+}
+
+/** Movement keys as a direction: each axis is -1, 0 or 1. */
+export function moveKeys(): { x: number; y: number } {
+  const d = input.down;
+  return {
+    x: (d.has('KeyD') || d.has('ArrowRight') ? 1 : 0) - (d.has('KeyA') || d.has('ArrowLeft') ? 1 : 0),
+    y: (d.has('KeyS') || d.has('ArrowDown') ? 1 : 0) - (d.has('KeyW') || d.has('ArrowUp') ? 1 : 0),
+  };
+}
 
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'Tab', 'KeyI', 'KeyM', 'Escape']);
 

@@ -8,7 +8,12 @@ export interface Hero {
   y: number;
   kx: number; // knockback velocity
   ky: number;
-  aim: number; // radians toward the cursor
+  aim: number; // radians: where abilities go. Toward the cursor, or the facing with aim assist applied
+  face: number; // radians: the way the hero faces. Follows the cursor, or the last movement when facing controls are on
+  faceX: number; // movement keys the facing was last taken from
+  faceY: number;
+  faceT: number; // ms a diagonal has been held on only one of its keys
+  aimHold: number; // ms the aim stays on an assisted target before it returns to the facing
   cd: number[]; // ms left per active slot
   cdMax: number[];
   iframes: number;

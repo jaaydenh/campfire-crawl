@@ -8,9 +8,10 @@ import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
 import { scene } from '../game/scene';
+import { SLOT_KEYS } from '../input';
 import { buyUpgrade, canRerollKit, giveItem, heroStats, kitCost, kitOffer, kitPrice, outfit, rerollKit, shopPrice, shopStock, spendable, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
-import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, type ItemStack, type RunHero } from '../types';
+import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, controlsOf, type ControlMode, type ItemStack, type RunHero } from '../types';
 import { HERO_COLORS, drawMap, esc, ico } from './hud';
 import { applyVolumes, musicIcon, musicToggle, toggleMusic } from './sound';
 
@@ -83,9 +84,10 @@ function onKey(e: KeyboardEvent): void {
         def.click();
       }
     } else if (e.code === 'Escape' || (current === 'inventory' && (e.code === 'Tab' || e.code === 'KeyI')) || (current === 'map' && e.code === 'KeyM')) {
-      if (['inventory', 'map', 'pause', 'bestiary', 'upgrades'].includes(current)) {
+      if (['inventory', 'map', 'pause', 'bestiary', 'upgrades', 'herosettings'].includes(current)) {
         e.preventDefault();
         if (current === 'bestiary' || current === 'upgrades') hubScreen();
+        else if (current === 'herosettings') settingsBack();
         else closeScreen();
       }
     }
@@ -249,6 +251,7 @@ export function hubScreen(): void {
       })
       .join('');
     detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${spendable(p)} renown to spend${kc ? ` · ${kc} held for the starter kit` : ''}</span></h3>
+      <div class="row"><button class="btn ghost tiny" data-act="settings">Hero settings</button><span class="muted small">Controls: ${CONTROLS[controlsOf(p)].name}</span></div>
       <h4>Permanent upgrades <span class="muted small">${levels} of ${levelsMax} levels bought</span></h4>
       <div class="row"><button class="btn" data-act="upgrades">Open upgrade tree</button><span class="muted small">${ready ? `${ready} within reach right now` : 'nothing affordable yet'}</span></div>
       <h4>Starter kit <span class="muted small">${s.run ? 'for the next run: finish or abandon this one first' : kc ? `equipped when the run starts, for ${kc} renown` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
@@ -328,6 +331,7 @@ export function hubScreen(): void {
           hubScreen();
         }, hubScreen),
       upgrades: () => upgradesScreen(),
+      settings: () => heroSettingsScreen(selHero, hubScreen),
       reroll: () => {
         if (!rerollKit(s, selHero)) return;
         audio.sfx('ui');
@@ -417,6 +421,57 @@ function upgradesScreen(): void {
   );
 }
 
+const CONTROLS: Record<ControlMode, { name: string; desc: string; notes: string }> = {
+  mouse: {
+    name: 'Mouse aim',
+    desc: 'Abilities go toward the mouse cursor, wherever the hero is walking.',
+    notes: 'Move with W A S D or the arrow keys · aim with the mouse',
+  },
+  facing: {
+    name: 'Facing aim',
+    desc: 'Abilities go the way the hero faces: the way they last moved. Swings and shots turn toward a monster roughly ahead, and that monster is marked.',
+    notes: 'Move with W A S D or the arrow keys · the mouse buttons also work · a raised shield keeps its facing while you move',
+  },
+};
+
+let settingsBack: () => void = () => {};
+
+/** Settings that belong to one hero, so every player at the keyboard keeps their own. Opened from the camp and from the pause menu. */
+function heroSettingsScreen(heroIdx: number, back: () => void): void {
+  const p = G.save!.heroes[heroIdx];
+  if (!p) return back();
+  settingsBack = back;
+  const mode = controlsOf(p);
+  const choice = (m: ControlMode) => {
+    const c = CONTROLS[m];
+    return `<button class="choice ${m === mode ? 'on' : ''}" data-act="mode" data-m="${m}">
+      <b>${c.name}</b>${m === mode ? '<span class="good small">in use</span>' : ''}
+      <span class="small">${c.desc}</span>
+      <span class="muted small">Slots: ${SLOT_KEYS[m].map((k) => `<kbd>${k}</kbd>`).join(' ')}</span>
+      <span class="muted small">${c.notes}</span></button>`;
+  };
+  show(
+    'herosettings',
+    `<div class="screen dim"><div class="panel mid">
+      <div class="row">${heroIco(p.color)}<h3 class="grow" style="color:${HERO_COLORS[p.color]}">${esc(p.name)}'s settings</h3></div>
+      <h4>Control style</h4>
+      <div class="choices">${choice('mouse')}${choice('facing')}</div>
+      <p class="muted small">Each hero keeps their own control style, so players can pass the keyboard without changing it back.</p>
+      <button class="btn" data-act="back" data-default>Done</button>
+    </div></div>`,
+    {
+      mode: (el) => {
+        p.controls = el.dataset.m as ControlMode;
+        audio.sfx('ui');
+        // in the middle of a turn the save on disk is still the last campfire: the choice is written with the next save
+        if (!scene.loaded) app.saveNow();
+        heroSettingsScreen(heroIdx, back);
+      },
+      back,
+    },
+  );
+}
+
 function bestiaryScreen(): void {
   const s = G.save!;
   const rows = Object.values(MONSTERS)
@@ -461,7 +516,7 @@ function invGrid(h: number, locked: boolean): string {
     return `<button class="cell ${isSel ? 'sel' : ''}" data-act="cell" data-h="${l.h}" data-w="${l.where}" data-i="${l.i}" ${locked ? 'disabled' : ''} ${st ? `data-item="${st.id}" data-charges="${st.charges ?? ''}"` : ''}>
       ${st ? ico(ITEMS[st.id].icon) + (st.charges !== undefined ? `<b class="ch">${st.charges}</b>` : '') : `<span class="empty">${label}</span>`}</button>`;
   };
-  const keys = ['L-click', 'R-click', 'Space'];
+  const keys = SLOT_KEYS[controlsOf(profileOf(rh))];
   return `<div class="invgrid">
     <div class="row">${rh.slots.map((st, i) => `<div class="cellwrap">${cell({ h, where: 'slot', i }, st, 'fists')}<span class="key">${keys[i]}</span></div>`).join('')}
       <div class="cellwrap gap">${cell({ h, where: 'passive', i: 0 }, rh.passive, 'none')}<span class="key">Passive</span></div></div>
@@ -541,18 +596,21 @@ function musicButton(el: HTMLElement): void {
 
 export function pauseScreen(): void {
   const v = G.save!.settings;
+  const rh = activeHero();
   overlay(
     'pause',
     `<div class="screen dim"><div class="panel narrow"><h3>Paused</h3>
       <div class="row nowrap volrow"><label class="grow">Music <input type="range" id="vmusic" min="0" max="1" step="0.05" value="${v.music}"></label>${musicToggle()}</div>
       <label>Sound <input type="range" id="vsfx" min="0" max="1" step="0.05" value="${v.sfx}"></label>
       <button class="btn wide" data-act="close" data-default>Resume</button>
+      <button class="btn ghost wide" data-act="settings">${esc(profileOf(rh).name)}'s controls: ${CONTROLS[controlsOf(profileOf(rh))].name}</button>
       <button class="btn ghost wide" data-act="quit">Quit to camp</button>
       <p class="muted small">Quitting returns the party to the last campfire when you resume. The run is kept.</p>
     </div></div>`,
     {
       close: closeScreen,
       music: musicButton,
+      settings: () => heroSettingsScreen(rh.profile, pauseScreen),
       quit: () => {
         overlayResume = false;
         closeScreen();
@@ -602,6 +660,7 @@ export function readyScreen(onGo: () => void): void {
       <p>${esc(def.sectionNames[r.checkpoint])} <span class="muted">· section ${r.checkpoint + 1} of ${def.sectionNames.length}</span></p>
       <p>${ico(IC.HeartUI, 'sm')} ${Math.ceil(rh.hp)} / ${st.maxHp} &nbsp; ${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'}</p>
       <div class="row center">${loadoutIcons(rh)}</div>
+      <p class="muted small">${CONTROLS[controlsOf(p)].name} · slots on ${SLOT_KEYS[controlsOf(p)].join(', ')}</p>
       <button class="btn big" data-act="go" data-default>Begin</button>
       <p class="muted small">Space or Enter to begin</p>
     </div></div>`,

@@ -4,9 +4,11 @@ import { T } from '../src/art/manifest';
 import { getMap } from '../src/data/maps';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
 import { ITEMS, STARTER_POOL, isLastingWeapon, newStack } from '../src/data/items';
+import { MELEE_CONE, RANGED_CONE, leadAngle, pickTarget } from '../src/game/aim';
 import { World } from '../src/game/world';
 import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, spendable, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
+import { controlsOf } from '../src/types';
 
 const save = newSave();
 save.created = 1764000000000; // fixed, so the starter kit offers below are the same on every run of this script
@@ -306,5 +308,36 @@ assert.equal(cy.renown, before[0] + 20);
 assert.equal(t.heroes[1].renown, before[1] + 7);
 assert.deepEqual(Array.from(unpackBits(t.knowledge.map1.explored!, 10)), [1, 1, 1, 1, 0, 0, 0, 0, 1, 1], 'explored tiles accumulate across runs');
 assert.equal(mergeBits('', ''), '');
+
+// control styles: a hero without the setting aims with the mouse, and the setting survives a save
+assert.equal(controlsOf({ name: 'Gi', color: 0, renown: 0, upgrades: {}, kit: [] }), 'mouse');
+assert.equal(controlsOf({ name: 'Gi', color: 0, renown: 0, upgrades: {}, kit: [], controls: 'facing' }), 'facing');
+assert.equal(controlsOf({ name: 'Gi', color: 0, renown: 0, upgrades: {}, kit: [], controls: 'junk' as never }), 'mouse', 'an unknown style in an imported save falls back to the mouse');
+const styled = newSave();
+styled.heroes.push({ name: 'Hu', color: 2, renown: 0, upgrades: {}, kit: [null, null, null, null], controls: 'facing' });
+assert.equal(controlsOf(parseSave(JSON.stringify(styled)).heroes[0]), 'facing');
+
+// aim assist, hero at the origin facing right (+x); y grows downward
+const mon = (x: number, y: number, r = 5) => ({ x, y, r });
+const ahead = mon(30, 4);
+const closeButWide = mon(12, 14);
+const behind = mon(-10, 0);
+assert.equal(pickTarget([behind, closeButWide, ahead], 0, 0, 0, 60, MELEE_CONE), ahead, 'in line with the facing beats closer but off to the side');
+assert.equal(pickTarget([behind], 0, 0, 0, 60, MELEE_CONE), null, 'nothing behind the hero is picked');
+assert.equal(pickTarget([mon(70, 0)], 0, 0, 0, 60, MELEE_CONE), null, 'out of reach');
+assert.ok(pickTarget([mon(69, 0, 10)], 0, 0, 0, 60, MELEE_CONE), 'reach is measured to the edge of the body');
+const diag = mon(40, 30); // 0.64 rad off the facing
+assert.equal(pickTarget([diag], 0, 0, 0, 100, MELEE_CONE), diag);
+assert.equal(pickTarget([diag], 0, 0, 0, 100, RANGED_CONE), diag, 'just inside the narrower cone for shots');
+assert.equal(pickTarget([mon(40, 34)], 0, 0, 0, 100, RANGED_CONE), null, 'and just outside it');
+for (let a = 0; a < Math.PI * 2; a += 0.05) {
+  // whatever the bearing, one of the eight facings puts a monster inside the cone for shots
+  const m = mon(Math.cos(a) * 80, Math.sin(a) * 80);
+  assert.ok([0, 1, 2, 3, 4, 5, 6, 7].some((k) => pickTarget([m], 0, 0, (k * Math.PI) / 4, 100, RANGED_CONE)), `a monster at bearing ${a.toFixed(2)} can be shot`);
+}
+assert.equal(pickTarget([ahead, diag], 0, 0, 0, 100, MELEE_CONE, (m) => m !== ahead), diag, 'a blocked target is passed over for the next best');
+assert.equal(leadAngle(100, 0, 0, 0, 200), 0, 'a still target is shot at directly');
+assert.ok(Math.abs(leadAngle(100, 0, 0, 40, 200) - Math.atan2(20, 100)) < 1e-9, 'a moving one is led by its travel during the flight');
+assert.ok(Math.abs(leadAngle(1000, 0, 0, 40, 200) - Math.atan2(20, 1000)) < 1e-9, 'the lead never looks more than half a second ahead');
 
 console.log('All rule checks passed');

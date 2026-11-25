@@ -18,7 +18,7 @@ they are my proposals and the first things to change if they feel wrong.
 |---|---|
 | Players | 1-4, hot-seat: pass the keyboard and mouse between turns |
 | Turn model | Each player has their own hero; the party advances through one shared map |
-| Movement / aim | WASD in 8 directions, abilities fire toward the mouse cursor |
+| Movement / aim | WASD in 8 directions. Each hero picks a control style: abilities fire toward the mouse cursor, or the way the hero faces with aim assist |
 | Slots | 3 active slots + 1 passive slot; empty active slots punch with fists |
 | Resources | Cooldowns only; limited-use items have charges. No mana or stamina |
 | Defence | No built-in dodge. Shields, dashes and blinks are equipment |
@@ -97,6 +97,24 @@ they are my proposals and the first things to change if they feel wrong.
 | M | Full map of explored areas **(default)** |
 | E | Interact: levers, chests, NPCs **(default)** |
 | Esc | Pause menu |
+
+**Control styles.** Each hero has their own, set in the hero's settings at the hub
+or from the pause menu, so players passing the keyboard never have to change it back.
+
+- **Mouse aim (default):** the table above. Abilities go toward the cursor.
+- **Facing aim:** abilities go the way the hero faces, which is the way they last
+  moved. Slots 1, 2, 3 are on J, K and Space (the mouse buttons still work). A
+  small tick in front of the hero shows the facing, and a raised shield keeps its
+  facing while the hero moves.
+  - **Aim assist:** a swing turns toward the best monster within its reach and
+    about 80 degrees either side of the facing; a shot or a thrown bomb turns
+    toward one within its range and about 37 degrees either side, as long as
+    nothing solid is in the way, and leads a monster that is walking. Being in
+    line with the facing counts for more than being close. The monster the next
+    attack would turn to is marked with brackets.
+  - With no monster to turn to, a swing turns toward a pot in reach, a shot turns
+    toward a lever it could trip (a fire bolt also toward an unlit brazier) and
+    otherwise goes straight ahead, and a bomb lands 3.5 tiles ahead.
 
 - **Active slots (3):** weapons, spells, tools. An empty slot is a fist punch.
 - **Passive slot (1):** always-on gear such as a lantern, armour or a charm.

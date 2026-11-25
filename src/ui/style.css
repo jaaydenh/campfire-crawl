@@ -103,6 +103,13 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .pick:disabled { opacity: 0.4; cursor: default; }
 .pick.on { border-color: var(--gold); background: #2a2408; }
 .pick .cost { margin-left: auto; color: var(--gold); white-space: nowrap; }
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choice { font: inherit; color: var(--text); background: #000; border: 3px solid var(--line); padding: 8px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; cursor: pointer; text-align: left; position: relative; }
+.choice:hover { border-color: var(--text); }
+.choice.on { border-color: var(--gold); background: #2a2408; }
+.choice b { font-size: 22px; }
+.choice .good { position: absolute; right: 10px; top: 10px; }
+.choice kbd { font-size: 15px; color: var(--text); }
 .desc { min-height: 52px; font-size: 17px; padding: 6px 8px; background: #000; border: 2px solid #3a355c; }
 .desc:empty::before { content: 'Point at an item to read about it.'; color: #5d577d; }
 

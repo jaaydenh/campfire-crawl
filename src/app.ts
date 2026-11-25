@@ -35,10 +35,11 @@ export function resumeRun(): void {
 export function quitToHub(): void {
   scene.unloadRun();
   showHud(false);
-  const settings = G.save!.settings;
+  const { settings, heroes } = G.save!;
   const disk = loadSlot(G.slot);
   if (disk) {
     disk.settings = settings;
+    disk.heroes.forEach((h, i) => (h.controls = heroes[i]?.controls)); // set from the pause menu, like the volume
     G.save = disk;
     writeSlot(G.slot, disk);
   }
