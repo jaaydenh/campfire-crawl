@@ -26,7 +26,8 @@ const defs: ItemDef[] = [
   // Offensive
   { id: 'fists', name: 'Fists', desc: 'Your bare hands. Short reach, quick jabs.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Fists, cooldown: 320, price: 0, kit: 0, starter: false },
   { id: 'club', name: 'Club', desc: 'A heavy swing that knocks foes back.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Club, cooldown: 480, price: 30, kit: 15, starter: true },
-  { id: 'sword', name: 'Sword', desc: 'Fast, wide slashes.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Sword, cooldown: 380, price: 70, kit: 35, starter: false },
+  { id: 'sword', name: 'Short Sword', desc: 'The blade every hero sets out with. Fast, wide slashes.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Sword, cooldown: 380, price: 0, kit: 0, starter: false },
+  { id: 'longsword', name: 'Longsword', desc: 'A larger blade. Wide slashes with a long reach.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Longsword, cooldown: 380, price: 70, kit: 35, starter: false },
   { id: 'spear', name: 'Spear', desc: 'A long thrust that pierces everything in a line.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Spear, cooldown: 520, price: 60, kit: 30, starter: true },
   { id: 'bow', name: 'Bow', desc: 'Looses arrows toward the cursor. Comes with 120 arrows; monsters sometimes drop more while it is equipped.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Bow, cooldown: 620, charges: 120, ammo: true, price: 35, kit: 18, starter: true },
   { id: 'knives', name: 'Throwing Knives', desc: 'Very fast to throw. Limited supply.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Knives, cooldown: 220, charges: 14, price: 20, kit: 10, starter: true },
@@ -46,7 +47,10 @@ const defs: ItemDef[] = [
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(defs.map((d) => [d.id, d]));
-export const ITEM_LIST = defs.filter((d) => d.id !== 'fists');
+/** The weapon every hero is handed at the start of a run. It is never loot, never sold and never a kit offer. */
+export const STARTER_WEAPON = 'sword';
+/** Everything that can be found, bought or offered: all items but the fists and the starter weapon. */
+export const ITEM_LIST = defs.filter((d) => d.id !== 'fists' && d.id !== STARTER_WEAPON);
 export const STARTER_POOL = defs.filter((d) => d.starter).map((d) => d.id);
 
 /** A weapon that never leaves the hero's hands: unlimited use, or ammunition that can be refilled. */

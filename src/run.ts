@@ -1,5 +1,5 @@
 // Run rules that do not need the game world: stats, loot rolls, turn order, rewards.
-import { ITEMS, ITEM_LIST, isLastingWeapon, newStack } from './data/items';
+import { ITEMS, ITEM_LIST, STARTER_WEAPON, isLastingWeapon, newStack } from './data/items';
 import { UPGRADE } from './data/upgrades';
 import { Rng, seeded } from './rng';
 import { LIVES_PER_HERO, PACK_SIZE, type HeroProfile, type ItemStack, type RunHero, type RunState, type SaveFile } from './types';
@@ -147,7 +147,7 @@ export function kitOffer(save: SaveFile, heroIdx: number): string[] {
   const p = save.heroes[heroIdx];
   const rerolled = p.rerollAt === save.runsPlayed ? ':again' : '';
   const rng = seeded(save.created >>> 0, `kit:${save.runsPlayed}:${heroIdx}${rerolled}`);
-  const pool = save.pool.filter((id) => ITEMS[id] && id !== 'fists');
+  const pool = save.pool.filter((id) => ITEM_LIST.includes(ITEMS[id]));
   for (let i = pool.length - 1; i > 0; i--) {
     const j = rng.int(0, i);
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -207,7 +207,10 @@ export function toggleKitItem(save: SaveFile, heroIdx: number, id: string): KitT
   return 'added';
 }
 
-/** Starts a run for the chosen heroes (in turn order). Charges each hero's starter kit. */
+/**
+ * Starts a run for the chosen heroes (in turn order). Charges each hero's starter kit, and hands each
+ * hero the starter weapon: it goes in the first active slot the kit left empty, or the pack when there is none.
+ */
 export function createRun(save: SaveFile, heroIdxs: number[], mapId: string): RunState {
   const heroes: RunHero[] = heroIdxs.map((profile) => {
     const p = save.heroes[profile];
@@ -229,6 +232,7 @@ export function createRun(save: SaveFile, heroIdxs: number[], mapId: string): Ru
       earned: 0,
     };
     p.kit = [null, null, null, null];
+    giveItem(rh, newStack(STARTER_WEAPON));
     rh.hp = heroStats(save, rh).maxHp;
     return rh;
   });
@@ -296,7 +300,7 @@ function rollItem(rng: Rng, pool: string[], tier: LootTier): string {
     good: [3, 6, 1],
     rare: [0, 5, 5],
   };
-  let cands = pool.map((id) => ITEMS[id]).filter(Boolean);
+  let cands = pool.map((id) => ITEMS[id]).filter((d) => ITEM_LIST.includes(d));
   if (tier === 'weapon') cands = cands.filter(isLastingWeapon);
   const bag: string[] = [];
   for (const d of cands) for (let i = 0; i < weights[tier][d.rarity]; i++) bag.push(d.id);

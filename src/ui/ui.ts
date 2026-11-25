@@ -3,7 +3,7 @@ import { IC } from '../art/manifest';
 import { audio } from '../audio/audio';
 import * as app from '../app';
 import { G, activeHero, profileOf, run } from '../core';
-import { ITEMS, RARITY_NAMES, type ItemDef } from '../data/items';
+import { ITEMS, RARITY_NAMES, STARTER_WEAPON, type ItemDef } from '../data/items';
 import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
@@ -257,6 +257,7 @@ export function hubScreen(): void {
       <h4>Starter kit <span class="muted small">${s.run ? 'for the next run: finish or abandon this one first' : kc ? `equipped when the run starts, for ${kc} renown` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
         ${p.upgrades.look ? `<button class="btn tiny ghost" data-act="reroll" ${canRerollKit(s, selHero) ? '' : 'disabled'}>${canRerollKit(s, selHero) ? 'Re-roll offer' : 'Re-roll used'}</button>` : ''}</h4>
       <div class="picker">${offers}</div>
+      <p class="muted small">${ico(ITEMS[STARTER_WEAPON].icon, 'sm')}Every hero also sets out with a ${esc(ITEMS[STARTER_WEAPON].name)}, free.</p>
       <div id="desc" class="desc"></div>
       ${s.run ? '' : `<button class="btn ghost tiny danger" data-act="retire">Retire this hero</button>`}`;
   }

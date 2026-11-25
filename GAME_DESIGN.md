@@ -19,7 +19,7 @@ they are my proposals and the first things to change if they feel wrong.
 | Players | 1-4, hot-seat: pass the keyboard and mouse between turns |
 | Turn model | Each player has their own hero; the party advances through one shared map |
 | Movement / aim | WASD in 8 directions. Each hero picks a control style: abilities fire toward the mouse cursor, or the way the hero faces with aim assist |
-| Slots | 3 active slots + 1 passive slot; empty active slots punch with fists |
+| Slots | 3 active slots + 1 passive slot; every hero starts a run with a short sword; empty active slots punch with fists |
 | Resources | Cooldowns only; limited-use items have charges. No mana or stamina |
 | Defence | No built-in dodge. Shields, dashes and blinks are equipment |
 | Classes | None. Gear makes the build; players pick a name and colour |
@@ -142,7 +142,7 @@ or from the pause menu, so players passing the keyboard never have to change it 
 
 | Category | Examples |
 |---|---|
-| Offensive | Fists, club, sword, spear, bow, throwing knives, fire bolt, frost nova, chain lightning, bombs |
+| Offensive | Fists, short sword (every hero starts each run with one), club, longsword, spear, bow, throwing knives, fire bolt, frost nova, chain lightning, bombs |
 | Defensive | Shield (block toward cursor), dash boots, blink, stone skin, armour (passive) |
 | Utility | Lantern and torch (light radius, passive), keys, magnet charm (pulls gold), reveal scroll |
 
@@ -199,7 +199,7 @@ Each section targets 3-5 minutes; boss sections run longer.
 | What | Owned by | How |
 |---|---|---|
 | Upgrade tree: 23 permanent upgrades in four paths (see below) | Each hero | Bought at the hub with meta currency |
-| Starter kit | Each hero, per run | Before each run every hero is offered 4 random items from the unlocked pool (one is always a reusable weapon) and may buy any of them; not kept |
+| Starter kit | Each hero, per run | Before each run every hero is offered 4 random items from the unlocked pool (one is always a reusable weapon) and may buy any of them; not kept. The short sword every hero starts with is free and separate: it takes the first active slot the kit leaves empty, or the pack |
 | Item pool | Save file | Grows from boss kills and secrets |
 | Map knowledge: found secrets, open shortcuts, bestiary | Save file | Recorded on discovery; shortcuts stay open in later runs |
 | Map and tier unlocks | Save file | Beat a map to unlock the next; beat map 8 to unlock tiers |
@@ -240,8 +240,8 @@ says.
 Deliberately left out: healing at campfires, bonus renown, a death-saving
 upgrade and a bigger backpack.
 
-Difficulty target: a brand-new party on fists should usually run out of lives
-around the middle of map 1, and clear it on the second or third run. Map N is
+Difficulty target: a brand-new party with only its short swords should usually
+run out of lives around the middle of map 1, and clear it on the second or third run. Map N is
 tuned for heroes carrying roughly N-1 maps' worth of upgrades, so map 2 is
 close to impossible on a first run.
 
