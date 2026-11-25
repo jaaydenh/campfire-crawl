@@ -33,7 +33,7 @@ function makeMon(s: GameScene, type: string, x: number, y: number, spawnId: stri
   return {
     spawnId, def, x, y, kx: 0, ky: 0, hp: def.hp, maxHp: def.hp, r: def.radius,
     state: 'idle', t: gen ? 1500 : 0, cd: 400 + Math.random() * 600, hitCd: 0,
-    alerted: false, lostT: 0, slowT: 0, flashT: 0, face: 1, dirX: 1, dirY: 0,
+    alerted: false, lostT: 0, slowT: 0, stunT: 0, flashT: 0, face: 1, dirX: 1, dirY: 0,
     homeX: x, homeY: y, wanderT: Math.random() * 3000, wx: x, wy: y, anim: Math.random() * 1000, seed: Math.random() * 100,
     parent, children: 0, dead: false, boss: null, spr, mark: null,
   };
@@ -134,7 +134,8 @@ function summon(s: GameScene, type: string, x: number, y: number, parent: Mon | 
   return null;
 }
 
-export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: number): void {
+/** Hurts a monster and shoves it. `stun` is how long, in ms, the hit leaves it unable to act. */
+export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: number, stun = 0): void {
   if (m.dead) return;
   if (m.boss) {
     if (m.boss.mode === 'break' || m.boss.mode === 'idle') {
@@ -153,6 +154,16 @@ export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: num
   m.kx += kx;
   m.ky += ky;
   alert(s, m);
+  // the Chief and generators shrug stuns off, as they do knockback
+  if (stun > 0 && !m.boss && m.def.ai !== 'generator') {
+    m.stunT = Math.max(m.stunT, stun);
+    if (m.state === 'attack') {
+      // knocked out of a lunge: it does not carry on once the stun ends
+      m.state = 'recover';
+      m.t = 780;
+      m.cd = 1100;
+    }
+  }
   s.number(m.x, m.y - 12, dmg, 0xffffff);
   if (m.hp > 0) return;
   if (m.boss && m.boss.phase < CHIEF_PHASES.length - 1) bossBreak(s, m);
@@ -348,11 +359,15 @@ export function updateMonsters(s: GameScene, dt: number): void {
     const dy = h.y - m.y;
     const dist = Math.hypot(dx, dy);
     if (dist > 24 * TILE && !m.alerted) continue; // far away and asleep
-    m.cd -= dt;
     m.hitCd -= dt;
     m.slowT -= dt;
+    m.stunT -= dt;
     m.flashT -= dt;
-    m.anim += dt;
+    const stunned = m.stunT > 0;
+    if (!stunned) {
+      m.cd -= dt; // the attack cooldown waits out a stun, as the state timer does
+      m.anim += dt;
+    }
     const ai = m.def.ai;
     const fly = ai === 'flyer';
     if (Math.abs(m.kx) + Math.abs(m.ky) > 2) {
@@ -378,7 +393,9 @@ export function updateMonsters(s: GameScene, dt: number): void {
     const touch = dist < m.r + 5;
     let windup = false;
 
-    if (m.boss) {
+    if (stunned) {
+      // does nothing: its state timer waits too, so a wind-up picks up where it stopped
+    } else if (m.boss) {
       updateBoss(s, m, dt, dist, toHero, los);
     } else if (ai === 'generator') {
       if (m.alerted) {
@@ -524,7 +541,7 @@ export function updateMonsters(s: GameScene, dt: number): void {
       spr.setFlipX(m.face < 0);
     }
     if (m.flashT > 0) spr.setTintFill(0xffffff);
-    else if (m.boss?.mode === 'stun') spr.setTint(0x9a9aa8);
+    else if (stunned || m.boss?.mode === 'stun') spr.setTint(0x9a9aa8);
     else if (m.boss?.mode === 'break') spr.setTint(Math.floor(s.clock / 90) % 2 ? 0xffe08a : 0xffffff);
     else if (m.slowT > 0) spr.setTint(0x8fc8ff);
     else if (windup) spr.setTint(Math.floor(s.clock / 80) % 2 ? 0xff8a7a : 0xffffff);
@@ -554,7 +571,7 @@ export function updateMonsters(s: GameScene, dt: number): void {
   }
 }
 
-/** Red warning shapes for attacks that are about to land. */
+/** Red warning shapes for attacks that are about to land, and the stars over a stunned monster. */
 export function drawTelegraphs(s: GameScene): void {
   const g = s.tele;
   g.clear();
@@ -579,6 +596,13 @@ export function drawTelegraphs(s: GameScene): void {
         g.lineBetween(m.x, m.y - 6, m.x + Math.cos(b.ang) * 120, m.y - 6 + Math.sin(b.ang) * 120);
       }
       continue;
+    }
+    if (m.stunT > 0) {
+      g.fillStyle(0xffe08a, 1);
+      for (const k of [0, Math.PI]) {
+        const a = s.clock / 110 + k;
+        g.fillRect(Math.round(m.x + Math.cos(a) * 5) - 1, Math.round(m.y - 13 + Math.sin(a) * 2) - 1, 2, 2);
+      }
     }
     if (m.state !== 'windup') continue;
     if (m.def.ai === 'melee') {

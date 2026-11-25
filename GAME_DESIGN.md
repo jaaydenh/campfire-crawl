@@ -128,6 +128,15 @@ or from the pause menu, so players passing the keyboard never have to change it 
 - Real-time, with contact and projectile damage and a brief invulnerability
   window after being hit **(default)**.
 - Every ability has its own cooldown: fast for melee swings, longer for big spells.
+- Every melee hit stuns the monster it lands on: it cannot walk, attack or wind
+  up, though the hit's knockback still shoves it back. A wind-up already begun
+  waits rather than resets, and so does its attack cooldown. A wolf hit in the
+  middle of a lunge is knocked out of it and goes straight to its recovery
+  instead of finishing the lunge. The stun grows with the weapon's weight: fists
+  0.2 s, short sword and longsword 0.3 s, spear 0.4 s, club 0.8 s, cleaver 1.0
+  s. The club and cleaver stun for longer than their cooldowns, so repeated hits
+  never let a monster act. The Bandit Chief and monster generators cannot be
+  stunned.
 - Limited-use items (bombs, scrolls, throwing knives) carry charges and are gone
   when spent.
 - The bow uses arrows: a new bow holds 120 (199 at most) and stays equipped when

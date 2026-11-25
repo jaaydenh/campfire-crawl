@@ -25,7 +25,7 @@ export const RARITY_NAMES = ['Common', 'Uncommon', 'Rare'];
 const defs: ItemDef[] = [
   // Offensive
   { id: 'fists', name: 'Fists', desc: 'Your bare hands. Short reach, quick jabs.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Fists, cooldown: 320, price: 0, kit: 0, starter: false },
-  { id: 'club', name: 'Club', desc: 'A heavy swing that knocks foes back.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Club, cooldown: 480, price: 30, kit: 15, starter: true },
+  { id: 'club', name: 'Club', desc: 'A heavy swing that knocks foes back and leaves them stunned.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Club, cooldown: 480, price: 30, kit: 15, starter: true },
   { id: 'sword', name: 'Short Sword', desc: 'The blade every hero sets out with. Fast, wide slashes.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Sword, cooldown: 380, price: 0, kit: 0, starter: false },
   { id: 'longsword', name: 'Longsword', desc: 'A larger blade. Wide slashes with a long reach.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Longsword, cooldown: 380, price: 70, kit: 35, starter: false },
   { id: 'spear', name: 'Spear', desc: 'A long thrust that pierces everything in a line.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Spear, cooldown: 520, price: 60, kit: 30, starter: true },
@@ -34,7 +34,7 @@ const defs: ItemDef[] = [
   { id: 'firebolt', name: 'Fire Bolt', desc: 'A blast of flame that bursts on impact and lights braziers.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Firebolt, cooldown: 1100, price: 80, kit: 40, starter: false },
   { id: 'frost', name: 'Frost Nova', desc: 'Freezes everything around you for a few seconds.', slot: 'active', cat: 'offensive', rarity: 2, icon: IC.Frost, cooldown: 4200, price: 110, kit: 55, starter: false },
   { id: 'bombs', name: 'Bombs', desc: 'Thrown, then explode. Break cracked walls. Limited supply.', slot: 'active', cat: 'offensive', rarity: 0, icon: IC.Bombs, cooldown: 900, charges: 5, price: 25, kit: 12, starter: true },
-  { id: 'cleaver', name: "Chief's Cleaver", desc: 'A brutal, slow cleave with huge knockback.', slot: 'active', cat: 'offensive', rarity: 2, icon: IC.Cleaver, cooldown: 680, price: 120, kit: 60, starter: false },
+  { id: 'cleaver', name: "Chief's Cleaver", desc: 'A brutal, slow cleave with huge knockback and a long stun.', slot: 'active', cat: 'offensive', rarity: 2, icon: IC.Cleaver, cooldown: 680, price: 120, kit: 60, starter: false },
   // Defensive
   { id: 'shield', name: 'Shield', desc: 'Hold to block attacks from the direction of the cursor. Slows you while raised.', slot: 'active', cat: 'defensive', rarity: 0, icon: IC.Shield, cooldown: 0, hold: true, price: 30, kit: 15, starter: true },
   { id: 'dash', name: 'Dash Boots', desc: 'A quick dash that passes through danger and over gaps.', slot: 'active', cat: 'defensive', rarity: 1, icon: IC.DashBoots, cooldown: 1500, price: 70, kit: 35, starter: false },

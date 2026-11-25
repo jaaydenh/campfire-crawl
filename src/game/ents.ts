@@ -55,6 +55,7 @@ export interface Mon {
   alerted: boolean;
   lostT: number;
   slowT: number;
+  stunT: number; // ms left stunned by a melee hit: it cannot walk, attack or wind up, but knockback still shoves it
   flashT: number;
   face: number; // 1 right, -1 left
   dirX: number;

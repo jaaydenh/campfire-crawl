@@ -29,17 +29,18 @@ interface Swing {
   half: number; // half-width of the arc, radians
   dmg: number;
   knock: number;
+  stun: number; // ms a monster it hits is stunned. When this is longer than the weapon's cooldown, repeated hits never let the monster act
   scale: number;
   frame: F;
   sfx: 'punch' | 'swing';
 }
 const MELEE: Record<string, Swing> = {
-  fists: { range: 15, half: 0.95, dmg: 2, knock: 70, scale: 0.7, frame: F.Punch, sfx: 'punch' },
-  club: { range: 20, half: 1.0, dmg: 3.5, knock: 190, scale: 1, frame: F.Slash0, sfx: 'swing' },
-  sword: { range: 23, half: 1.3, dmg: 4, knock: 100, scale: 1.15, frame: F.Slash0, sfx: 'swing' },
-  longsword: { range: 31, half: 1.3, dmg: 4, knock: 100, scale: 1.55, frame: F.Slash0, sfx: 'swing' },
-  cleaver: { range: 25, half: 1.25, dmg: 7, knock: 260, scale: 1.4, frame: F.Slash0, sfx: 'swing' },
-  spear: { range: 36, half: 0.3, dmg: 4.5, knock: 110, scale: 1, frame: F.Thrust, sfx: 'swing' },
+  fists: { range: 15, half: 0.95, dmg: 2, knock: 70, stun: 200, scale: 0.7, frame: F.Punch, sfx: 'punch' },
+  club: { range: 20, half: 1.0, dmg: 3.5, knock: 190, stun: 800, scale: 1, frame: F.Slash0, sfx: 'swing' },
+  sword: { range: 23, half: 1.3, dmg: 4, knock: 100, stun: 300, scale: 1.15, frame: F.Slash0, sfx: 'swing' },
+  longsword: { range: 31, half: 1.3, dmg: 4, knock: 100, stun: 300, scale: 1.55, frame: F.Slash0, sfx: 'swing' },
+  cleaver: { range: 25, half: 1.25, dmg: 7, knock: 260, stun: 1000, scale: 1.4, frame: F.Slash0, sfx: 'swing' },
+  spear: { range: 36, half: 0.3, dmg: 4.5, knock: 110, stun: 400, scale: 1, frame: F.Thrust, sfx: 'swing' },
 };
 
 interface Shot {
@@ -759,7 +760,7 @@ export class GameScene extends Phaser.Scene {
       if (m.dead || !inArc(m.x, m.y, m.r)) continue;
       if (!this.world.los(tx(h.x), tx(h.y), tx(m.x), tx(m.y))) continue;
       const a = Math.atan2(m.y - h.y, m.x - h.x);
-      damageMon(this, m, dmg, Math.cos(a) * knock, Math.sin(a) * knock);
+      damageMon(this, m, dmg, Math.cos(a) * knock, Math.sin(a) * knock, sw.stun);
       landed = true;
     }
     for (const o of this.world.objs) {
