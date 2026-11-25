@@ -1,9 +1,9 @@
 // Turn flow: what happens between the hub, the world and the screens in between.
 import { audio } from './audio/audio';
-import { G, activeHero, run } from './core';
+import { G, run } from './core';
 import { getMap } from './data/maps';
 import { scene } from './game/scene';
-import { advanceTurn, createRun, finishRun, heroStats } from './run';
+import { advanceTurn, campRest, createRun, finishRun, heroFell } from './run';
 import { loadSlot, writeSlot } from './save';
 import { showHud } from './ui/hud';
 import * as ui from './ui/ui';
@@ -80,6 +80,7 @@ export function wireHooks(): void {
   G.hooks.onCheckpoint = (index) => {
     const r = run();
     r.checkpoint = index;
+    campRest(G.save!, r);
     scene.commitKills();
     for (const rh of r.heroes) rh.earned += 5;
     const arrived = r.active;
@@ -91,17 +92,14 @@ export function wireHooks(): void {
     });
   };
 
-  G.hooks.onHeroDeath = () => {
+  G.hooks.onHeroDeath = (x, y) => {
     const r = run();
-    const rh = activeHero();
-    rh.deaths++;
-    rh.hp = heroStats(G.save!, rh).maxHp; // comes back at full health next turn
-    r.lives--;
-    if (r.lives <= 0) return endRun(false);
     const fallen = r.active;
+    const lostRescue = !!r.fallen; // someone was waiting for this hero to reach them
+    if (heroFell(G.save!, r, x, y)) return endRun(false);
     advanceTurn(r);
     saveNow();
-    ui.deathScreen(fallen, nextTurn);
+    ui.deathScreen(fallen, lostRescue, nextTurn);
   };
 
   G.hooks.onBossPhase = (phase) => {

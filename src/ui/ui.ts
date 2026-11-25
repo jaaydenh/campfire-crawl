@@ -275,7 +275,7 @@ export function hubScreen(): void {
   if (s.run) {
     const r = s.run;
     const def = getMap(r.mapId);
-    runBox = `<div class="panel inset"><b class="good">Run in progress</b><p class="muted small">${esc(def.name)} · ${esc(def.sectionNames[r.checkpoint])} · ${r.lives} ${r.lives === 1 ? 'life' : 'lives'} left · next up: ${esc(s.heroes[r.heroes[r.active].profile].name)}</p>
+    runBox = `<div class="panel inset"><b class="good">Run in progress</b><p class="muted small">${esc(def.name)} · ${esc(def.sectionNames[r.checkpoint])} · ${r.lives} ${r.lives === 1 ? 'life' : 'lives'} left${r.fallen ? ' (+1 to rescue)' : ''} · next up: ${esc(s.heroes[r.heroes[r.active].profile].name)}</p>
       <div class="row"><button class="btn" data-act="resume" data-default>Resume</button><button class="btn ghost danger" data-act="abandon">Abandon</button></div></div>`;
   } else {
     const lives = party.length * LIVES_PER_HERO + party.reduce((n, i) => n + (s.heroes[i].upgrades.wind ?? 0), 0);
@@ -581,7 +581,7 @@ export function inventoryScreen(): void {
 
 export function mapScreen(): void {
   overlay('map', `<div class="screen dim"><div class="panel mapbox"><h3>${esc(scene.def.name)}</h3><canvas id="bigmap" width="${scene.world.w * 2}" height="${scene.world.h * 2}"></canvas>
-    <p class="muted small">Orange: campfires · Yellow: unopened chests · Red: closed doors and gates · Cyan: shrines · Pink: pedestals</p>
+    <p class="muted small">Orange: campfires · Yellow: unopened chests · Red: closed doors and gates · Cyan: shrines · Pink: pedestals · Green: a fallen hero to rescue</p>
     <button class="btn" data-act="close" data-default>Close</button></div></div>`, { close: closeScreen });
   const ctx = (modal.querySelector('#bigmap') as HTMLCanvasElement).getContext('2d')!;
   const h = scene.hero!;
@@ -659,7 +659,9 @@ export function readyScreen(onGo: () => void): void {
       ${r.heroes.length > 1 ? `<p class="muted">Pass the controls to</p><h4>Player ${r.active + 1}</h4>` : ''}
       <div class="row center">${heroIco(p.color, 'big')}<h2 style="color:${HERO_COLORS[p.color]}">${esc(p.name)}</h2></div>
       <p>${esc(def.sectionNames[r.checkpoint])} <span class="muted">· section ${r.checkpoint + 1} of ${def.sectionNames.length}</span></p>
-      <p>${ico(IC.HeartUI, 'sm')} ${Math.ceil(rh.hp)} / ${st.maxHp} &nbsp; ${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'}</p>
+      <p>${ico(IC.HeartUI, 'sm')} ${Math.ceil(rh.hp)}${rh.bonusHp ? ` <b class="bonus">+${Math.ceil(rh.bonusHp)}</b>` : ''} / ${st.maxHp} &nbsp; ${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'}</p>
+      ${rh.bonusHp ? `<p class="bonus small">Comeback: +${Math.ceil(rh.bonusHp)} health for this turn.</p>` : ''}
+      ${rescueNote()}
       <div class="row center">${loadoutIcons(rh)}</div>
       <p class="muted small">${CONTROLS[controlsOf(p)].name} · slots on ${SLOT_KEYS[controlsOf(p)].join(', ')}</p>
       <button class="btn big" data-act="go" data-default>Begin</button>
@@ -675,13 +677,30 @@ export function readyScreen(onGo: () => void): void {
   );
 }
 
-export function deathScreen(fallen: number, onNext: () => void): void {
+/** Who is waiting for rescue and what it takes, for the screen before a turn. Empty when nobody is. */
+function rescueNote(): string {
   const r = run();
-  const p = G.save!.heroes[r.heroes[fallen].profile];
+  if (!r.fallen) return '';
+  const own = r.fallen.hero === r.active;
+  const name = esc(G.save!.heroes[r.heroes[r.fallen.hero].profile].name);
+  const last = r.lives <= 0 ? ' It is the last life the party has.' : '';
+  return `<p class="good small">${own ? 'Your life waits where you fell' : `${name} lies where they fell`}: reach the spot to win the life back. Fall first and both lives are lost.${last}</p>`;
+}
+
+/** `lostRescue`: someone was waiting to be rescued when this hero fell, so two lives went at once. */
+export function deathScreen(fallen: number, lostRescue: boolean, onNext: () => void): void {
+  const r = run();
+  const rh = r.heroes[fallen];
+  const p = G.save!.heroes[rh.profile];
+  const fate = lostRescue
+    ? 'Nobody reached the hero who fell before: both lives are lost.'
+    : `This life is not lost yet. It waits where ${esc(p.name)} fell: the next hero to reach the spot wins it back.`;
   show(
     'death',
     `<div class="screen dim red"><div class="panel ready"><h2 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} has fallen</h2>
-      <p>${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'} left</p>
+      <p>${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'} left${r.fallen ? ' <span class="risk">+1 to rescue</span>' : ''}</p>
+      <p class="${lostRescue ? 'bad' : 'good'}">${fate}</p>
+      <p class="bonus small">${esc(p.name)} returns next turn at full health with +${Math.ceil(rh.bonusHp ?? 0)} comeback health.</p>
       <p class="muted">The party regroups at the last campfire. Monsters ahead have returned; opened doors, solved puzzles and looted chests stay as they are.</p>
       <button class="btn big" data-act="go" data-default>Continue</button></div></div>`,
     { go: () => { closeScreen(); onNext(); } },
@@ -726,8 +745,8 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
   show(
     'camp',
     `<div class="screen camp">
-      <div class="hubhead"><h2>Campfire ${index} of ${def.checkpoints.length - 1}</h2><span class="muted">${esc(s.heroes[r.heroes[arrived].profile].name)} made it. Progress saved. Everyone earns 5 renown.</span><span class="grow"></span>
-        <span>${ico(IC.LifeUI, 'sm')} ${r.lives} ${r.lives === 1 ? 'life' : 'lives'}</span>
+      <div class="hubhead"><h2>Campfire ${index} of ${def.checkpoints.length - 1}</h2><span class="muted">${esc(s.heroes[r.heroes[arrived].profile].name)} made it. Progress saved. Everyone earns 5 renown and rests to at least half health.</span><span class="grow"></span>
+        <span>${ico(IC.LifeUI, 'sm')} ${r.lives} ${r.lives === 1 ? 'life' : 'lives'}${r.fallen ? ' <span class="risk">+1 to rescue</span>' : ''}</span>
         ${musicToggle()}</div>
       <div class="campcols"><div class="col grow">${heroPanels}</div>${shop ? `<div class="col shopcol">${shop}</div>` : ''}</div>
       <div id="desc" class="desc"></div>

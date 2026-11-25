@@ -1,12 +1,12 @@
 // The world scene: draws the map and runs the real-time simulation for the active hero.
 import Phaser from 'phaser';
-import { F, O, SHEETS, T, type SheetKey } from '../art/manifest';
+import { F, IC, O, SHEETS, T, type SheetKey } from '../art/manifest';
 import { audio } from '../audio/audio';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
 import { input, moveKeys, slotHeld } from '../input';
-import { ARROW_MAX, ARROW_PILE, addArrows, fillMissingCharges, giveItem, outfit, hasFlag, heroStats, packBits, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
+import { ARROW_MAX, ARROW_PILE, RESCUE_REACH, addArrows, fillMissingCharges, giveItem, outfit, hasFlag, heroStats, packBits, rescueFallen, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
 import { TILE, VIEW_H, VIEW_W, controlsOf, type GroundItem, type ItemStack } from '../types';
 import type { MapDef } from '../world/mapdef';
 import { MELEE_CONE, MELEE_SLACK, RANGED_CONE, leadAngle, pickTarget, type AimTarget } from './aim';
@@ -112,6 +112,8 @@ export class GameScene extends Phaser.Scene {
   private objSpr = new Map<Obj, Img>();
   private itemSpr = new Map<Obj, Img>();
   private groundSpr = new Map<GroundItem, Img>();
+  /** The fallen hero waiting for rescue: the body, and the life token that floats over it. */
+  private fallenSpr: { body: Img; token: Img } | null = null;
   private lastTile = -1;
   private pushT = 0;
   private promptObj: Obj | null = null;
@@ -207,6 +209,7 @@ export class GameScene extends Phaser.Scene {
     for (const p of this.projs) p.spr.destroy();
     for (const p of this.picks) p.spr.destroy();
     for (const b of this.bombs) b.spr.destroy();
+    this.clearFallen();
     this.mons = [];
     this.projs = [];
     this.picks = [];
@@ -248,6 +251,7 @@ export class GameScene extends Phaser.Scene {
     const shield = this.add.image(0, 0, 'fx', F.Shield).setVisible(false);
     this.hero = { x: center(cp.x), y: center(cp.y), kx: 0, ky: 0, aim: Math.PI / 2, face: Math.PI / 2, faceX: 0, faceY: 1, faceT: 0, aimHold: 0, cd: [0, 0, 0], cdMax: [1, 1, 1], iframes: 1000, slowT: 0, blocking: false, dash: null, moving: false, walkT: 0, dead: false, spr, shield };
     spawnMonsters(this);
+    this.placeFallen();
     this.lastTile = -1;
     this.updateVision(true);
     const cam = this.cameras.main;
@@ -399,6 +403,44 @@ export class GameScene extends Phaser.Scene {
         break;
       }
     }
+    this.updateFallen();
+  }
+
+  // ------------------------------------------------------------------ rescue
+
+  /** Shows the hero whose life is waiting to be saved, lying where they fell. */
+  private placeFallen(): void {
+    const f = run().fallen;
+    if (!f) return;
+    const color = G.save!.heroes[run().heroes[f.hero].profile].color;
+    const body = this.add.image(f.x, f.y, `hero${color}`, 0).setOrigin(0.5, 0.7).setAngle(90).setAlpha(0.6).setDepth(DEPTH.floor + 3);
+    // above the fog, so it can be seen from across ground the party has already explored
+    const token = this.add.image(f.x, f.y - 14, 'icons', IC.LifeUI).setDepth(DEPTH.top);
+    this.fallenSpr = { body, token };
+  }
+
+  private clearFallen(): void {
+    this.fallenSpr?.body.destroy();
+    this.fallenSpr?.token.destroy();
+    this.fallenSpr = null;
+  }
+
+  /** Bobs the life token over a fallen hero, and saves them when the hero in play reaches the spot. */
+  private updateFallen(): void {
+    const r = run();
+    const f = r.fallen;
+    const h = this.hero!;
+    if (!f || !this.fallenSpr || this.ending) return;
+    this.fallenSpr.token.setY(f.y - 14 + Math.round(Math.sin(this.clock / 260) * 2));
+    if (Math.hypot(f.x - h.x, f.y - h.y) >= RESCUE_REACH) return;
+    const saved = rescueFallen(r);
+    if (saved === null) return;
+    const name = G.save!.heroes[r.heroes[saved].profile].name;
+    this.fx(F.Poof0, f.x, f.y, 250);
+    this.clearFallen();
+    this.fogVersion++; // redraws the minimap without the marker
+    audio.sfx('life');
+    G.hooks.toast(saved === r.active ? 'You are back where you fell: +1 life.' : `${name} is back on their feet: +1 life.`, 'good');
   }
 
   /** Facing controls: the hero faces the way they move, and the aim follows unless an attack has just turned it. */
@@ -621,7 +663,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.stats.armour) dmg = Math.max(1, Math.round(dmg * 0.75));
     const rh = activeHero();
-    rh.hp -= dmg;
+    const soaked = Math.min(rh.bonusHp ?? 0, dmg); // comeback health goes first
+    if (soaked) rh.bonusHp = (rh.bonusHp ?? 0) - soaked;
+    rh.hp -= dmg - soaked;
     h.iframes = this.stats.iframes;
     const k = opts.knock ?? 150;
     h.kx = -Math.cos(a) * k;
@@ -646,7 +690,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: h.spr, angle: 90, alpha: 0.2, duration: 700 });
     this.time.delayedCall(1100, () => {
       this.paused = true;
-      G.hooks.onHeroDeath();
+      G.hooks.onHeroDeath(h.x, h.y);
     });
   }
 

@@ -26,9 +26,10 @@ they are my proposals and the first things to change if they feel wrong.
 | Run | One map per run (about 30-45 minutes). Beating a map unlocks the next |
 | Maps | Fixed layouts, puzzles and secrets; monsters, loot and some traps re-rolled per run |
 | Death | Monsters in the unfinished section respawn; everything else persists |
+| Rescue | A fallen hero's life waits where they fell; the next hero to reach the spot wins it back |
 | Run failure | Shared pool of lives: 2 per player, more earned during the run |
 | Bosses | On a death, the boss heals only to the start of its current phase |
-| Healing | Heart drops, merchant healing for gold, full HP on respawn. No checkpoint heal |
+| Healing | Heart drops, merchant healing for gold, full HP plus comeback health on respawn, at least half HP at every campfire |
 | Loot | Finder keeps; trade between heroes at checkpoint camps |
 | In-run growth | Gear and gold shops. No XP or levels |
 | Inventory | 6-space backpack; re-equip only when no monster is alerted |
@@ -49,8 +50,9 @@ they are my proposals and the first things to change if they feel wrong.
 1. **Hub.** Pick a save file, choose which heroes (1-4) join, spend meta currency
    on permanent upgrades, buy a starter kit, choose an unlocked map and tier.
 2. **Run.** The party plays that map section by section, one hero at a time.
-3. **Camp** at each checkpoint: autosave, trade items, visit the merchant if one
-   is there, then hand the controls to the next player.
+3. **Camp** at each checkpoint: autosave, everyone rests up to at least half
+   health, trade items, visit the merchant if one is there, then hand the
+   controls to the next player.
 4. **End.** The run ends when the map's boss dies (next map unlocks) or the lives
    pool hits zero. In-run gear is lost; gold becomes meta currency; back to the hub.
 
@@ -60,8 +62,9 @@ they are my proposals and the first things to change if they feel wrong.
   world; the others wait at the last checkpoint.
 - **Reach the next checkpoint alive:** camp opens, then control passes to the next
   player, who starts from that checkpoint.
-- **Die:** one life leaves the party pool, the hero will respawn at full HP on their
-  next turn, and control passes to the next player, who starts from the previous
+- **Die:** one life leaves the party pool and waits where the hero fell (see
+  Rescue), the hero will respawn at full HP with comeback health on their next
+  turn, and control passes to the next player, who starts from the previous
   checkpoint.
 - **Solo:** the same player simply continues.
 - A "Player N, get ready" screen sits between turns so nobody is ambushed mid-swap.
@@ -71,13 +74,36 @@ they are my proposals and the first things to change if they feel wrong.
   secrets. **(default)**
 - A dead hero keeps their gear and gold; the life is the whole penalty. **(default)**
 
+### Rescue
+
+- A hero who dies leaves their body where they fell, with a life token floating
+  over it. That life is held at risk, not spent. The spot shows green on the
+  minimap and the full map.
+- The next hero to come within about a tile of the body wins the life back for
+  the party. Solo, the same player runs back to their own body.
+- A hero who dies while another is still waiting loses both lives, and leaves
+  nobody to rescue. So a death costs at most what it did before rescues.
+- The body stays until a hero reaches it or another hero dies, even after the
+  party moves on to later campfires.
+- The party's last life can be rescued too: with no lives in the pool and a hero
+  waiting, the next player gets one attempt. Dying on it ends the run.
+
+### Comeback health and campfire rest
+
+- **Comeback health:** on the turn after a death, the hero has extra health
+  worth 25% of their max HP (rounded up) on top of a full bar. It soaks damage
+  first, cannot be healed back, and ends when the turn does.
+- **Campfire rest:** reaching a campfire raises every hero who is below half
+  health to half their max HP (rounded up). Nobody is lowered.
+
 ### Lives
 
 - Start: 2 per participating hero, pooled (solo 2, four players 8), plus any
   bought through meta upgrades.
 - Earned in a run: +1 for each boss phase broken, +1 for each life shrine found
   (1-2 hidden per map). **(default amounts)**
-- Zero lives ends the run.
+- The run ends when a hero dies with no life left: none in the pool for a first
+  death, or one or fewer when it also loses a hero waiting for rescue.
 
 ### Bosses
 
@@ -237,8 +263,8 @@ says.
 | | Wider Offer | 1 | A fifth starter kit offer | Quartermaster 2 |
 | | Second Look | 1 | One re-roll of the starter kit offer per run | Wider Offer 1 |
 
-Deliberately left out: healing at campfires, bonus renown, a death-saving
-upgrade and a bigger backpack.
+Deliberately left out of the tree: more healing at campfires than the rest every
+party gets, bonus renown, a death-saving upgrade and a bigger backpack.
 
 Difficulty target: a brand-new party with only its short swords should usually
 run out of lives around the middle of map 1, and clear it on the second or third run. Map N is
@@ -260,8 +286,9 @@ close to impossible on a first run.
   monsters **(default)**.
 - **View:** low internal resolution (about 384x216) scaled up by whole numbers
   for crisp pixels **(default)**.
-- **HUD:** HP, the 3 active slots with cooldown sweeps, the passive slot, gold,
-  party lives, whose turn it is, a small minimap.
+- **HUD:** HP (comeback health as a gold strip), the 3 active slots with cooldown
+  sweeps, the passive slot, gold, party lives and any life waiting for rescue,
+  whose turn it is, a small minimap.
 - **Audio:** sound effects and looping chiptune tracks synthesised in the browser.
 
 ## 11. Technology
@@ -272,7 +299,7 @@ close to impossible on a first run.
 
 ## 12. First delivery: hub + map 1
 
-- All core systems: turns and hand-off, lives, camp and trading, merchant,
+- All core systems: turns and hand-off, lives, rescue, camp and trading, merchant,
   inventory with the swap-when-safe rule, fog of war, saving with 3 files and
   export/import, hub with hero profiles, upgrades and starter kits.
 - Map 1 complete: 6 sections from forest into bandit cave, 6 monster types,

@@ -59,6 +59,15 @@ export interface RunHero {
   earned: number; // renown bonuses earned this run
   /** Gold handed out at the start by Pocket Change. It can be spent, but never turns into renown. */
   startGold?: number;
+  /** Comeback health for the turn after a death: sits on top of max HP, soaks damage first, never heals back. */
+  bonusHp?: number;
+}
+
+/** Where a hero fell. Their life is not spent yet: it comes back if a hero reaches this spot. */
+export interface Fallen {
+  hero: number; // index into RunState.heroes
+  x: number; // world pixels
+  y: number;
 }
 
 export interface GroundItem {
@@ -72,7 +81,10 @@ export interface RunState {
   seed: number;
   heroes: RunHero[]; // in turn order
   active: number; // index into heroes
+  /** Lives the party still holds. The life of a fallen hero waiting for rescue is not counted here. */
   lives: number;
+  /** The last hero to fall, while their life can still be saved. Missing on older saves. */
+  fallen?: Fallen | null;
   checkpoint: number; // last checkpoint reached (0 = map start)
   /** Persistent world facts: opened chests, solved puzzles, broken pots, found secrets ... */
   flags: string[];
