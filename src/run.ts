@@ -75,10 +75,10 @@ export function upgradeLock(p: HeroProfile, id: string): { id: string; level: nu
   return needs;
 }
 
-/** Buys one level. Returns false when it is locked, maxed or too dear. */
+/** Buys one level. Returns false when it is locked, maxed or too dear. Renown held for the starter kit cannot pay for it. */
 export function buyUpgrade(p: HeroProfile, id: string): boolean {
   const cost = upgradeCost(p, id);
-  if (cost === null || cost > p.renown || upgradeLock(p, id)) return false;
+  if (cost === null || cost > spendable(p) || upgradeLock(p, id)) return false;
   p.renown -= cost;
   p.upgrades[id] = lvl(p, id) + 1;
   return true;
@@ -92,6 +92,12 @@ export function kitPrice(p: HeroProfile, id: string): number {
 export function kitCost(p: HeroProfile): number {
   return p.kit.reduce((sum, id) => sum + (id ? kitPrice(p, id) : 0), 0);
 }
+
+/**
+ * Renown the hero is free to spend on upgrades. The chosen starter kit is only paid for when the run
+ * starts, so its price is held back until then: otherwise an upgrade could quietly spend the kit away.
+ */
+export const spendable = (p: HeroProfile): number => p.renown - kitCost(p);
 
 /** A fresh stack as this hero receives it: Packrat adds uses to limited items, Deep Quiver adds arrows. */
 export function outfit(p: HeroProfile, stack: ItemStack): ItemStack {
@@ -177,9 +183,12 @@ export function rerollKit(save: SaveFile, heroIdx: number): boolean {
   return true;
 }
 
-export type KitToggle = 'added' | 'removed' | 'full' | 'cost' | 'none';
+export type KitToggle = 'added' | 'removed' | 'full' | 'cost' | 'running' | 'none';
 
-/** Puts an offered item into the hero's kit, or takes it out again. Passives replace the current passive. */
+/**
+ * Puts an offered item into the hero's kit, or takes it out again. Passives replace the current passive.
+ * Nothing can be added while a run is in progress: a kit is handed out when a run starts, not when one resumes.
+ */
 export function toggleKitItem(save: SaveFile, heroIdx: number, id: string): KitToggle {
   const p = save.heroes[heroIdx];
   const at = p.kit.indexOf(id);
@@ -187,6 +196,7 @@ export function toggleKitItem(save: SaveFile, heroIdx: number, id: string): KitT
     p.kit[at] = null;
     return 'removed';
   }
+  if (save.run) return 'running';
   const def = ITEMS[id];
   if (!def || !kitOffer(save, heroIdx).includes(id)) return 'none';
   const slot = def.slot === 'passive' ? 3 : p.kit.findIndex((k, i) => i < 3 && !k);

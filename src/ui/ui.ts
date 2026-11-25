@@ -8,7 +8,7 @@ import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
 import { scene } from '../game/scene';
-import { buyUpgrade, canRerollKit, giveItem, heroStats, kitCost, kitOffer, kitPrice, outfit, rerollKit, shopPrice, shopStock, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
+import { buyUpgrade, canRerollKit, giveItem, heroStats, kitCost, kitOffer, kitPrice, outfit, rerollKit, shopPrice, shopStock, spendable, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
 import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, type ItemStack, type RunHero } from '../types';
 import { HERO_COLORS, drawMap, esc, ico } from './hud';
@@ -235,7 +235,7 @@ export function hubScreen(): void {
   if (p) {
     const levels = UPGRADES.reduce((n, u) => n + (p.upgrades[u.id] ?? 0), 0);
     const levelsMax = UPGRADES.reduce((n, u) => n + u.costs.length, 0);
-    const ready = UPGRADES.filter((u) => !upgradeLock(p, u.id) && (upgradeCost(p, u.id) ?? Infinity) <= p.renown).length;
+    const ready = UPGRADES.filter((u) => !upgradeLock(p, u.id) && (upgradeCost(p, u.id) ?? Infinity) <= spendable(p)).length;
     const kc = kitCost(p);
     const activeFull = p.kit.slice(0, 3).every(Boolean);
     const offers = kitOffer(s, selHero)
@@ -244,14 +244,14 @@ export function hubScreen(): void {
         const chosen = p.kit.includes(id);
         const price = kitPrice(p, id);
         const refund = d.slot === 'passive' && p.kit[3] ? kitPrice(p, p.kit[3]) : 0;
-        const blocked = !chosen && (kc - refund + price > p.renown || (d.slot === 'active' && activeFull));
+        const blocked = !chosen && (!!s.run || kc - refund + price > p.renown || (d.slot === 'active' && activeFull));
         return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${chosen ? 'in kit · ' : ''}${ico(IC.Renown, 'sm')}${price}</span></button>`;
       })
       .join('');
-    detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${p.renown} renown to spend</span></h3>
+    detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${spendable(p)} renown to spend${kc ? ` · ${kc} held for the starter kit` : ''}</span></h3>
       <h4>Permanent upgrades <span class="muted small">${levels} of ${levelsMax} levels bought</span></h4>
       <div class="row"><button class="btn" data-act="upgrades">Open upgrade tree</button><span class="muted small">${ready ? `${ready} within reach right now` : 'nothing affordable yet'}</span></div>
-      <h4>Starter kit <span class="muted small">${kc ? `costs ${kc} renown at run start` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
+      <h4>Starter kit <span class="muted small">${s.run ? 'for the next run: finish or abandon this one first' : kc ? `equipped when the run starts, for ${kc} renown` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
         ${p.upgrades.look ? `<button class="btn tiny ghost" data-act="reroll" ${canRerollKit(s, selHero) ? '' : 'disabled'}>${canRerollKit(s, selHero) ? 'Re-roll offer' : 'Re-roll used'}</button>` : ''}</h4>
       <div class="picker">${offers}</div>
       <div id="desc" class="desc"></div>
@@ -338,6 +338,8 @@ export function hubScreen(): void {
         const res = toggleKitItem(s, selHero, el.dataset.id!);
         if (res === 'full') return toast('All three active slots are taken. Remove one first.', 'bad');
         if (res === 'cost') return toast('Not enough renown for that.', 'bad');
+        if (res === 'running') return toast('A run is in progress. A starter kit is handed out when a new run starts.', 'bad');
+        if (res === 'none') return;
         audio.sfx(res === 'added' ? 'buy' : 'ui');
         app.saveNow();
         hubScreen();
@@ -380,7 +382,7 @@ function upgradesScreen(): void {
         ? '<span class="muted small">Max</span>'
         : lock
           ? ico(IC.Lock, 'sm')
-          : `<button class="btn tiny" data-act="buy" data-id="${id}" ${cost > p.renown ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`;
+          : `<button class="btn tiny" data-act="buy" data-id="${id}" ${cost > spendable(p) ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`;
     return `<div class="upnode d${upgradeDepth(id)} ${lv ? 'own' : ''} ${lock ? 'locked' : ''}" title="${esc(u.more ?? u.desc)}">
       <div class="l1"><b>${u.name}</b><span class="muted pips">${'●'.repeat(lv)}${'○'.repeat(u.costs.length - lv)}</span></div>
       <div class="l2"><span class="muted small">${u.desc}</span>${action}</div>
@@ -390,12 +392,12 @@ function upgradesScreen(): void {
     (path) => `<div class="panel upcol"><div class="l1"><h3>${path.name}</h3><span class="muted small">${path.blurb}</span></div>${UPGRADES.filter((u) => u.path === path.id).map((u) => node(u.id)).join('')}</div>`,
   ).join('');
   const tabs = s.heroes
-    .map((h, i) => `<button class="btn tiny ${i === selHero ? '' : 'ghost'}" data-act="hero" data-i="${i}">${esc(h.name)} ${ico(IC.Renown, 'sm')}${h.renown}</button>`)
+    .map((h, i) => `<button class="btn tiny ${i === selHero ? '' : 'ghost'}" data-act="hero" data-i="${i}">${esc(h.name)} ${ico(IC.Renown, 'sm')}${spendable(h)}</button>`)
     .join('');
   show(
     'upgrades',
     `<div class="screen upgrades">
-      <div class="hubhead"><h2>Upgrades</h2>${tabs}<span class="grow"></span><span class="muted small">Each upgrade opens once the one above it is high enough.</span>
+      <div class="hubhead"><h2>Upgrades</h2>${tabs}<span class="grow"></span><span class="muted small">${kitCost(p) ? `${kitCost(p)} renown is held for ${esc(p.name)}'s starter kit. ` : ''}Each upgrade opens once the one above it is high enough.</span>
         <button class="btn ghost tiny" data-act="back" data-default>Back to camp</button></div>
       <div class="upcols">${cols}</div>
     </div>`,
@@ -407,7 +409,6 @@ function upgradesScreen(): void {
       },
       buy: (el) => {
         if (!buyUpgrade(p, el.dataset.id!)) return;
-        if (kitCost(p) > p.renown) p.kit = [null, null, null, null];
         audio.sfx('buy');
         app.saveNow();
         upgradesScreen();

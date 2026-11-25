@@ -5,7 +5,7 @@ import { getMap } from '../src/data/maps';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
 import { ITEMS, STARTER_POOL, isLastingWeapon, newStack } from '../src/data/items';
 import { World } from '../src/game/world';
-import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, toggleKitItem, trimKit, unpackBits } from '../src/run';
+import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, KIT_OFFER_SIZE, addArrows, buyUpgrade, canRerollKit, kitPrice, mergeBits, outfit, rerollKit, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, setFlag, shopStock, spendable, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
 
 const save = newSave();
@@ -217,6 +217,14 @@ assert.equal(upgradeLock(cy, 'trap'), null);
 assert.equal(cy.renown, 10000 - 25 - 45 - 40);
 const poor = { name: 'Di', color: 3, renown: 24, upgrades: {}, kit: [null, null, null, null] };
 assert.equal(buyUpgrade(poor, 'vit'), false, 'cannot buy without the renown');
+// a chosen kit holds its renown: an upgrade cannot spend it and leave the hero without the kit at run start
+const keen = { name: 'Fi', color: 1, renown: 25 + ITEMS.bow.kit - 1, upgrades: {}, kit: ['bow', null, null, null] };
+assert.equal(spendable(keen), 24);
+assert.equal(buyUpgrade(keen, 'vit'), false, 'renown held for the kit cannot buy an upgrade');
+assert.deepEqual(keen.kit, ['bow', null, null, null], 'and the kit stays chosen');
+keen.renown++;
+assert.equal(buyUpgrade(keen, 'vit'), true);
+assert.equal(keen.renown, ITEMS.bow.kit, 'exactly the kit price is left');
 const old = { name: 'Ed', color: 0, renown: 500, upgrades: { wind: 1 }, kit: [null, null, null, null] };
 assert.equal(upgradeLock(old, 'wind'), null, 'an upgrade owned before the tree existed stays open');
 assert.equal(buyUpgrade(old, 'wind'), true);
@@ -284,6 +292,8 @@ assert.equal(r2.explored, t.knowledge.map1.explored, 'a party with a Cartographe
 assert.equal(createRun(t, [1], 'map1').explored, '', 'a party without one starts blind');
 t.runsPlayed--;
 const entry = shopStock(r2, t, 2)[0];
+assert.equal(toggleKitItem(t, 1, kitOffer(t, 1)[0]), 'running', 'no kit can be chosen while a run is in progress');
+assert.deepEqual(t.heroes[1].kit, [null, null, null, null]);
 assert.equal(shopPrice(t, r2.heroes[0], entry), Math.ceil(entry.price * 0.76));
 assert.equal(shopPrice(t, r2.heroes[1], entry), entry.price);
 r2.heroes[0].gold = 45 + 20; // found 20, never spent the starting 45
