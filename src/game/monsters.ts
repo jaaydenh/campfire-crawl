@@ -359,13 +359,15 @@ export function updateMonsters(s: GameScene, dt: number): void {
     const dy = h.y - m.y;
     const dist = Math.hypot(dx, dy);
     if (dist > 24 * TILE && !m.alerted) continue; // far away and asleep
-    m.cd -= dt;
     m.hitCd -= dt;
     m.slowT -= dt;
     m.stunT -= dt;
     m.flashT -= dt;
     const stunned = m.stunT > 0;
-    if (!stunned) m.anim += dt;
+    if (!stunned) {
+      m.cd -= dt; // the attack cooldown waits out a stun, as the state timer does
+      m.anim += dt;
+    }
     const ai = m.def.ai;
     const fly = ai === 'flyer';
     if (Math.abs(m.kx) + Math.abs(m.ky) > 2) {
