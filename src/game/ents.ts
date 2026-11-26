@@ -29,13 +29,20 @@ export interface Hero {
 
 export interface BossState {
   phase: number;
-  mode: 'idle' | 'walk' | 'cleaveWind' | 'chargeWind' | 'charge' | 'stun' | 'throwWind' | 'whirlWind' | 'recover' | 'break';
+  mode: 'idle' | 'walk' | 'cleaveWind' | 'chargeWind' | 'charge' | 'stun' | 'throwWind' | 'whirlWind' | 'slamWind' | 'leapWind' | 'leap' | 'recover' | 'break';
   t: number;
   ang: number;
   chargeCd: number;
   throwCd: number;
   whirlCd: number;
   chain: number;
+  // attacks added on the higher difficulty tiers
+  slamCd: number;
+  leapCd: number;
+  sx: number; // leap: where it starts
+  sy: number;
+  tx: number; // and where it lands
+  ty: number;
 }
 
 export interface Mon {
@@ -56,6 +63,9 @@ export interface Mon {
   lostT: number;
   slowT: number;
   stunT: number; // ms left stunned by a melee hit: it cannot walk, attack or wind up, but knockback still shoves it
+  chain: number; // lunges already made in the current run of lunges
+  burnT: number; // ms left burning: it takes a little damage every tick
+  burnTick: number; // ms until the next tick of burn damage
   flashT: number;
   face: number; // 1 right, -1 left
   dirX: number;
@@ -84,7 +94,10 @@ export interface Proj {
   dmg: number;
   fromHero: boolean;
   life: number; // ms
-  pierce: boolean;
+  pierce: boolean; // passes through monsters, hitting each once
+  trail?: number; // set on shots that shed sparkles: ms until the next one
+  /** A thrown weapon that returns: `t` is the ms left flying out, `slot` the slot it was thrown from. */
+  back?: { t: number; slot: number; turned: boolean };
   fire: boolean; // bursts and lights braziers
   web: boolean; // slows the hero
   spin: number; // radians per second

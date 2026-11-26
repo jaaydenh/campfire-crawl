@@ -25,12 +25,16 @@ export type ControlMode = 'mouse' | 'facing';
 export interface HeroProfile {
   name: string;
   color: number; // 0..4, selects sheet hero0..hero4 (4 is the heroine)
-  renown: number; // meta currency
+  renown: number; // meta currency: buys permanent upgrades and starter kit re-rolls
   upgrades: Record<string, number>;
-  /** Starter kit chosen for the next run: 3 active slots then the passive slot. Paid for when the run starts. */
+  /** Starter kit chosen for the next run: 3 active slots then the passive slot. Paid for with Prowess, which is full again every run. */
   kit: (string | null)[];
-  /** The run number (SaveFile.runsPlayed) whose kit offer this hero has re-rolled with Second Look. */
-  rerollAt?: number;
+  /** Achievements that each raised this hero's Prowess by one, such as 'half:map1' or 'clear:map1:1'. Missing on older saves. */
+  feats?: string[];
+  /** Signature items: always available for the starter kit, on top of the offer. Missing on older saves. */
+  pins?: string[];
+  /** How many times this hero has re-rolled the kit offer for the coming run (`at` is SaveFile.runsPlayed at the time). */
+  rerolls?: { at: number; n: number };
   /** Control style of the player who owns this hero. Missing on older saves, which means 'mouse'. */
   controls?: ControlMode;
 }
@@ -39,9 +43,13 @@ export const controlsOf = (p: HeroProfile): ControlMode => (p.controls === 'faci
 
 export interface MapKnowledge {
   secrets: string[];
+  /** Secrets whose first-time prize (the item on the pedestal) this save has taken. Later runs find the pedestal empty. */
+  prizes?: string[];
   shortcuts: string[];
   bestCheckpoint: number;
   clears: number;
+  /** Clears on each difficulty tier, tier 1 first. Missing on older saves, where every clear was on tier 1. */
+  tierClears?: number[];
   /** Every tile any party has explored here, packed like RunState.explored. Used by the Cartographer upgrade. */
   explored?: string;
 }
@@ -78,6 +86,8 @@ export interface GroundItem {
 
 export interface RunState {
   mapId: string;
+  /** Difficulty tier, 1 to 3. Missing on older saves, which means tier 1. */
+  tier?: number;
   seed: number;
   heroes: RunHero[]; // in turn order
   active: number; // index into heroes
@@ -105,6 +115,8 @@ export interface SaveFile {
   updated: number;
   heroes: HeroProfile[];
   pool: string[]; // unlocked item ids
+  /** Items discovered since the last run started: they are guaranteed a place in the next starter kit offers. */
+  fresh?: string[];
   knowledge: Record<string, MapKnowledge>;
   bestiary: string[];
   mapsUnlocked: number; // highest map number available (1-based)

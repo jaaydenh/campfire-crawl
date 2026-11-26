@@ -3,16 +3,17 @@ import { IC } from '../art/manifest';
 import { audio } from '../audio/audio';
 import * as app from '../app';
 import { G, activeHero, profileOf, run } from '../core';
-import { ITEMS, RARITY_NAMES, STARTER_WEAPON, type ItemDef } from '../data/items';
+import { ITEMS, ITEM_LIST, RARITY_NAMES, STARTER_WEAPON, type ItemDef } from '../data/items';
 import { MAPS, getMap } from '../data/maps';
 import { MONSTERS } from '../data/monsters';
+import { TIERS, TIER_COUNT, tierDef } from '../data/tiers';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
 import { scene } from '../game/scene';
 import { SLOT_KEYS } from '../input';
-import { buyUpgrade, canRerollKit, giveItem, heroStats, kitCost, kitOffer, kitPrice, outfit, rerollKit, shopPrice, shopStock, spendable, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
+import { KIT_ROLES, buyUpgrade, everCleared, featsOpen, giveItem, heroStats, kitCost, kitOffer, kitPrice, kitRole, outfit, pinSlots, pinsOf, prizeTaken, prowess, rerollBlock, rerollKit, rerollPrice, setPin, shopPrice, shopStock, tierClears, tierUnlocked, toggleKitItem, trimKit, upgradeCost, upgradeLock, type RunSummary } from '../run';
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
 import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, controlsOf, type ControlMode, type ItemStack, type RunHero } from '../types';
-import { HERO_COLORS, drawMap, esc, ico } from './hud';
+import { HERO_COLORS, drawMap, esc, ico, itemIco } from './hud';
 import { applyVolumes, musicIcon, musicToggle, toggleMusic } from './sound';
 
 type Handler = (el: HTMLElement, ev: Event) => void;
@@ -84,9 +85,9 @@ function onKey(e: KeyboardEvent): void {
         def.click();
       }
     } else if (e.code === 'Escape' || (current === 'inventory' && (e.code === 'Tab' || e.code === 'KeyI')) || (current === 'map' && e.code === 'KeyM')) {
-      if (['inventory', 'map', 'pause', 'bestiary', 'upgrades', 'herosettings'].includes(current)) {
+      if (['inventory', 'map', 'pause', 'bestiary', 'upgrades', 'pin', 'herosettings'].includes(current)) {
         e.preventDefault();
-        if (current === 'bestiary' || current === 'upgrades') hubScreen();
+        if (current === 'bestiary' || current === 'upgrades' || current === 'pin') hubScreen();
         else if (current === 'herosettings') settingsBack();
         else closeScreen();
       }
@@ -150,6 +151,7 @@ export function titleScreen(): void {
     {
       new: (el) => {
         G.slot = Number(el.dataset.i);
+        selTier = 0;
         G.save = newSave();
         applyVolumes();
         app.saveNow();
@@ -157,6 +159,7 @@ export function titleScreen(): void {
       },
       open: (el) => {
         G.slot = Number(el.dataset.i);
+        selTier = 0;
         G.save = loadSlot(G.slot);
         if (!G.save) return titleScreen();
         applyVolumes();
@@ -204,6 +207,9 @@ function confirmBox(msg: string, yes: string, onYes: () => void, onNo: () => voi
 let party: number[] = [];
 let selHero = 0;
 let addingHero = false;
+/** The difficulty tier chosen for the next run. 0: not chosen yet, so the camp suggests one. */
+let selTier = 0;
+const HUB_MAP = 'map1'; // the only map built so far
 
 export function hubScreen(): void {
   const s = G.save!;
@@ -211,6 +217,9 @@ export function hubScreen(): void {
   party = party.filter((i) => i < s.heroes.length);
   if (!party.length && !s.run) party = s.heroes.map((_, i) => i);
   if (selHero >= s.heroes.length) selHero = Math.max(0, s.heroes.length - 1);
+  // suggest the hardest open tier that is still to be cleared, or the hardest open one
+  const openTiers = TIERS.filter((t) => tierUnlocked(s, HUB_MAP, t.tier));
+  if (!openTiers.some((t) => t.tier === selTier)) selTier = ([...openTiers].reverse().find((t) => !tierClears(s, HUB_MAP, t.tier)) ?? openTiers[openTiers.length - 1]).tier;
   s.heroes.forEach((_, i) => trimKit(s, i)); // last run's choices are not on offer any more
   const p = s.heroes[selHero];
 
@@ -219,7 +228,7 @@ export function hubScreen(): void {
       const order = party.indexOf(i);
       return `<div class="herocard ${i === selHero ? 'sel' : ''}" data-act="sel" data-i="${i}">
         ${heroIco(h.color)}
-        <div class="grow"><b style="color:${HERO_COLORS[h.color]}">${esc(h.name)}</b><br><span class="gold">${ico(IC.Renown, 'sm')}${h.renown}</span></div>
+        <div class="grow"><b style="color:${HERO_COLORS[h.color]}">${esc(h.name)}</b><br><span class="nobr"><span class="gold">${ico(IC.Renown, 'sm')}${h.renown}</span> <span class="prow">${ico(IC.Prowess, 'sm')}${prowess(h)}</span></span></div>
         ${s.run ? '' : `<button class="btn tiny ${order >= 0 ? '' : 'ghost'}" data-act="party" data-i="${i}">${order >= 0 ? `Player ${order + 1}` : 'Sitting out'}</button>`}
       </div>`;
     })
@@ -237,27 +246,40 @@ export function hubScreen(): void {
   if (p) {
     const levels = UPGRADES.reduce((n, u) => n + (p.upgrades[u.id] ?? 0), 0);
     const levelsMax = UPGRADES.reduce((n, u) => n + u.costs.length, 0);
-    const ready = UPGRADES.filter((u) => !upgradeLock(p, u.id) && (upgradeCost(p, u.id) ?? Infinity) <= spendable(p)).length;
+    const ready = UPGRADES.filter((u) => !upgradeLock(p, u.id) && (upgradeCost(p, u.id) ?? Infinity) <= p.renown).length;
     const kc = kitCost(p);
+    const pw = prowess(p);
     const activeFull = p.kit.slice(0, 3).every(Boolean);
-    const offers = kitOffer(s, selHero)
-      .map((id) => {
-        const d = ITEMS[id];
-        const chosen = p.kit.includes(id);
-        const price = kitPrice(p, id);
-        const refund = d.slot === 'passive' && p.kit[3] ? kitPrice(p, p.kit[3]) : 0;
-        const blocked = !chosen && (!!s.run || kc - refund + price > p.renown || (d.slot === 'active' && activeFull));
-        return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''}>${ico(d.icon, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${chosen ? 'in kit · ' : ''}${ico(IC.Renown, 'sm')}${price}</span></button>`;
-      })
-      .join('');
-    detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${spendable(p)} renown to spend${kc ? ` · ${kc} held for the starter kit` : ''}</span></h3>
+    const fresh = s.fresh ?? [];
+    const pick = (id: string): string => {
+      const d = ITEMS[id];
+      const chosen = p.kit.includes(id);
+      const price = kitPrice(id);
+      const refund = d.slot === 'passive' && p.kit[3] ? kitPrice(p.kit[3]) : 0;
+      const dear = kc - refund + price > pw;
+      const blocked = !chosen && (!!s.run || dear || (d.slot === 'active' && activeFull));
+      const why = chosen || s.run ? '' : price > pw ? `Needs ${price} Prowess: ${esc(p.name)} has ${pw}` : dear ? 'Not enough Prowess left' : '';
+      return `<button class="pick ${chosen ? 'on' : ''}" data-act="pick" data-id="${id}" data-item="${id}" ${blocked ? 'disabled' : ''} title="${why}">${itemIco(id, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span>${fresh.includes(id) ? '<span class="new">new</span>' : ''}<span class="cost">${ico(IC.Prowess, 'sm')}${price}</span></button>`;
+    };
+    const offer = kitOffer(s, selHero);
+    const pins = pinsOf(s, selHero);
+    const offers =
+      `<span class="muted small">Pinned</span><div class="picks">${pins.map(pick).join('')}<button class="btn tiny ghost" data-act="pin">${pins.length ? (pinSlots(s) > 1 ? 'Change pins' : 'Change pin') : 'Pin an item'}</button></div>` +
+      KIT_ROLES.map((r) => {
+        const ids = offer.filter((id) => kitRole(ITEMS[id]) === r.role);
+        return ids.length ? `<span class="muted small">${r.name}</span><div class="picks">${ids.map(pick).join('')}</div>` : '';
+      }).join('');
+    const block = rerollBlock(s, selHero);
+    const rp = rerollPrice(s, selHero);
+    const rerollWhy = block === 'cost' ? 'Not enough renown' : block === 'same' ? 'Everything unlocked is already on offer' : block === 'running' ? 'A run is in progress' : 'Draw a new offer. The price doubles each time and starts again after the run.';
+    detail = `<h3 style="color:${HERO_COLORS[p.color]}">${esc(p.name)} <span class="muted small">${ico(IC.Renown, 'sm')}${p.renown} renown to spend · <span class="prow">${ico(IC.Prowess, 'sm')}${pw} Prowess</span></span></h3>
       <div class="row"><button class="btn ghost tiny" data-act="settings">Hero settings</button><span class="muted small">Controls: ${CONTROLS[controlsOf(p)].name}</span></div>
       <h4>Permanent upgrades <span class="muted small">${levels} of ${levelsMax} levels bought</span></h4>
       <div class="row"><button class="btn" data-act="upgrades">Open upgrade tree</button><span class="muted small">${ready ? `${ready} within reach right now` : 'nothing affordable yet'}</span></div>
-      <h4>Starter kit <span class="muted small">${s.run ? 'for the next run: finish or abandon this one first' : kc ? `equipped when the run starts, for ${kc} renown` : `${p.upgrades.wider ? 'five' : 'four'} offers, new every run`}</span>
-        ${p.upgrades.look ? `<button class="btn tiny ghost" data-act="reroll" ${canRerollKit(s, selHero) ? '' : 'disabled'}>${canRerollKit(s, selHero) ? 'Re-roll offer' : 'Re-roll used'}</button>` : ''}</h4>
+      <h4>Starter kit <span class="muted small">${s.run ? 'for the next run: finish or abandon this one first' : `<span class="prow">${ico(IC.Prowess, 'sm')}${kc} of ${pw} Prowess used</span>`}</span>
+        <button class="btn tiny ghost" data-act="reroll" ${block ? 'disabled' : ''} title="${rerollWhy}">Re-roll offer · ${rp ? `${ico(IC.Renown, 'sm')}${rp}` : 'free'}</button></h4>
       <div class="picker">${offers}</div>
-      <p class="muted small">${ico(ITEMS[STARTER_WEAPON].icon, 'sm')}Every hero also sets out with a ${esc(ITEMS[STARTER_WEAPON].name)}, free.</p>
+      <p class="muted small">${ico(ITEMS[STARTER_WEAPON].icon, 'sm')}Every hero also sets out with a ${esc(ITEMS[STARTER_WEAPON].name)}, free. Prowess is full again every run. It grows by one for each first: a map's halfway campfire, a clear on each tier, and a clear without falling.</p>
       <div id="desc" class="desc"></div>
       ${s.run ? '' : `<button class="btn ghost tiny danger" data-act="retire">Retire this hero</button>`}`;
   }
@@ -267,22 +289,47 @@ export function hubScreen(): void {
     const open = m.number <= s.mapsUnlocked;
     const built = !!m.build;
     const kn = k[m.id];
-    const sub = !open ? 'Locked: clear the map before it' : !built ? 'Unlocked, but not built yet' : `${m.blurb}${kn ? ` · secrets ${kn.secrets.length}/${getMap(m.id).secrets.length} · clears ${kn.clears}` : ''}`;
-    return `<div class="maprow ${open && built ? 'open' : 'locked'}"><b>${m.number}. ${open ? esc(m.name) : '???'}</b><br><span class="muted small">${sub}</span></div>`;
+    const sub = !open ? 'locked' : !built ? 'not built yet' : kn?.clears ? `cleared ×${kn.clears}` : 'open';
+    return `<div class="maprow ${open && built ? 'open' : 'locked'}" title="${!open ? 'Clear the map before it' : esc(m.blurb)}"><b>${m.number}. ${open ? esc(m.name) : '???'}</b><span class="muted small">${sub}</span></div>`;
   }).join('');
 
   let runBox: string;
   if (s.run) {
     const r = s.run;
-    const def = getMap(r.mapId);
-    runBox = `<div class="panel inset"><b class="good">Run in progress</b><p class="muted small">${esc(def.name)} · ${esc(def.sectionNames[r.checkpoint])} · ${r.lives} ${r.lives === 1 ? 'life' : 'lives'} left${r.fallen ? ' (+1 to rescue)' : ''} · next up: ${esc(s.heroes[r.heroes[r.active].profile].name)}</p>
+    const def = getMap(r.mapId, r.tier);
+    runBox = `<div class="panel inset"><b class="good">Run in progress</b><p class="muted small">${esc(def.name)} · ${tierDef(r.tier).name} · ${esc(def.sectionNames[r.checkpoint])} · ${r.lives} ${r.lives === 1 ? 'life' : 'lives'} left${r.fallen ? ' (+1 to rescue)' : ''} · next up: ${esc(s.heroes[r.heroes[r.active].profile].name)}</p>
       <div class="row"><button class="btn" data-act="resume" data-default>Resume</button><button class="btn ghost danger" data-act="abandon">Abandon</button></div></div>`;
   } else {
     const lives = party.length * LIVES_PER_HERO + party.reduce((n, i) => n + (s.heroes[i].upgrades.wind ?? 0), 0);
-    const over = party.some((i) => kitCost(s.heroes[i]) > s.heroes[i].renown);
-    runBox = `<div class="panel inset"><b>Map 1: Whispering Woods</b>
+    const def = getMap(HUB_MAP, selTier);
+    const t = tierDef(selTier);
+    const tierBtns = TIERS.map((x) => {
+      const open = tierUnlocked(s, HUB_MAP, x.tier);
+      const n = tierClears(s, HUB_MAP, x.tier);
+      const note = !open ? 'locked' : n ? `cleared${n > 1 ? ` ×${n}` : ''}` : 'not cleared';
+      return `<button class="pick ${x.tier === selTier ? 'on' : ''}" data-act="tier" data-i="${x.tier}" ${open ? '' : 'disabled'} title="${open ? esc(x.blurb) : `Clear ${TIERS[x.tier - 2].name} to open this tier`}"><span>${x.tier}. ${x.name}</span><span class="cost">${note}</span></button>`;
+    }).join('');
+    // what a run on this tier can still win, for this party and for the save
+    const toWin: string[] = [];
+    const feats = party.map((i) => ({ name: s.heroes[i].name, n: featsOpen(s.heroes[i], HUB_MAP, selTier) })).filter((x) => x.n);
+    if (feats.length) toWin.push(`<span class="prow" title="Prowess each hero can still earn here: the halfway campfire, the clear, and a clear without falling">${ico(IC.Prowess, 'sm')}${feats.map((x) => `${esc(x.name)} +${x.n}`).join(', ')}</span>`);
+    const prizes = def.objects.filter((o) => o.type === 'pedestal' && o.secret && !prizeTaken(s, HUB_MAP, o.secret)).length;
+    if (prizes) toWin.push(`${prizes} secret ${prizes === 1 ? 'prize' : 'prizes'}`);
+    // items found only on this tier and not discovered yet, as silhouettes: its secret prizes and what the Chief's first defeat here unlocks
+    const items = [...new Set([...def.objects.filter((o) => o.type === 'pedestal' && o.item).map((o) => o.item!), ...def.clearUnlocks])].filter((id) => !s.pool.includes(id));
+    if (items.length) toWin.push(`<span class="nobr" title="${items.length} undiscovered ${items.length === 1 ? 'item' : 'items'}">${items.map((id) => ico(ITEMS[id].icon, 'sm sil')).join('')}</span>`);
+    if (selTier < TIER_COUNT && !tierUnlocked(s, HUB_MAP, selTier + 1)) toWin.push(`${TIERS[selTier].name} tier`);
+    if (selTier === 2 && pinSlots(s) < 2) toWin.push('a second pinned item');
+    if (selTier === 3 && !everCleared(s, 3)) toWin.push('a wider kit offer');
+    const kn = k[HUB_MAP];
+    const mine = (ids?: string[]) => def.secrets.filter((x) => ids?.includes(x.id)).length; // each tier has its own secrets
+    const found = `secrets ${mine(kn?.secrets)}/${def.secrets.length} · prizes ${mine(kn?.prizes)}/${def.objects.filter((o) => o.type === 'pedestal' && o.secret).length}`;
+    runBox = `<div class="panel inset runbox"><b>Map ${def.number}: ${esc(def.name)}</b> <span class="muted small">${found}</span>
+      <div class="tiers">${tierBtns}</div>
+      <p class="muted small">${esc(t.blurb)} A clear pays ${t.clearBonus} renown each.</p>
+      <p class="small">${toWin.length ? `To win: ${toWin.join(' · ')}` : '<span class="muted">Nothing new is left to win on this tier.</span>'}</p>
       <p class="muted small">${party.length ? `${party.length} ${party.length === 1 ? 'player' : 'players'}: ${party.map((i) => esc(s.heroes[i].name)).join(', then ')} · ${lives} shared lives` : 'Choose at least one hero to play.'}</p>
-      <button class="btn big" data-act="start" ${party.length && !over ? '' : 'disabled'} data-default>Start run</button></div>`;
+      <button class="btn big" data-act="start" ${party.length ? '' : 'disabled'} data-default>Start run</button></div>`;
   }
 
   const scrolled = current === 'hub' ? (modal.querySelector('.detail')?.scrollTop ?? 0) : 0;
@@ -333,6 +380,7 @@ export function hubScreen(): void {
         }, hubScreen),
       upgrades: () => upgradesScreen(),
       settings: () => heroSettingsScreen(selHero, hubScreen),
+      pin: pinScreen,
       reroll: () => {
         if (!rerollKit(s, selHero)) return;
         audio.sfx('ui');
@@ -342,16 +390,21 @@ export function hubScreen(): void {
       pick: (el) => {
         const res = toggleKitItem(s, selHero, el.dataset.id!);
         if (res === 'full') return toast('All three active slots are taken. Remove one first.', 'bad');
-        if (res === 'cost') return toast('Not enough renown for that.', 'bad');
+        if (res === 'cost') return toast('Not enough Prowess for that.', 'bad');
         if (res === 'running') return toast('A run is in progress. A starter kit is handed out when a new run starts.', 'bad');
         if (res === 'none') return;
         audio.sfx(res === 'added' ? 'buy' : 'ui');
         app.saveNow();
         hubScreen();
       },
+      tier: (el) => {
+        selTier = Number(el.dataset.i);
+        audio.sfx('ui');
+        hubScreen();
+      },
       start: () => {
         closeScreen();
-        app.startRun([...party], 'map1');
+        app.startRun([...party], HUB_MAP, selTier);
       },
       resume: () => {
         closeScreen();
@@ -372,6 +425,38 @@ export function hubScreen(): void {
   if (panel) panel.scrollTop = scrolled;
 }
 
+/** Choosing the selected hero's signature item: anything in the unlocked pool, always available for their starter kit. */
+function pinScreen(): void {
+  const s = G.save!;
+  const p = s.heroes[selHero];
+  if (!p) return hubScreen();
+  const pins = pinsOf(s, selHero);
+  const known = ITEM_LIST.filter((d) => s.pool.includes(d.id));
+  const groups = KIT_ROLES.map((r) => {
+    const items = known.filter((d) => kitRole(d) === r.role);
+    const picks = items.map((d) => `<button class="pick ${pins.includes(d.id) ? 'on' : ''}" data-act="pin" data-id="${d.id}" data-item="${d.id}">${itemIco(d.id, 'sm')}<span class="r${d.rarity}">${esc(d.name)}</span><span class="cost">${pins.includes(d.id) ? 'pinned · ' : ''}${ico(IC.Prowess, 'sm')}${d.kit}</span></button>`);
+    return items.length ? `<span class="muted small">${r.name}</span><div class="picks">${picks.join('')}</div>` : '';
+  }).join('');
+  const slots = pinSlots(s);
+  const pin = (id: string | null) => {
+    if (!setPin(s, selHero, id)) return;
+    audio.sfx(id ? 'buy' : 'ui');
+    app.saveNow();
+    if (slots > 1) pinScreen(); // with two to choose, stay until the player is done
+    else hubScreen();
+  };
+  show(
+    'pin',
+    `<div class="screen dim"><div class="panel mid">
+      <h2>${esc(p.name)}'s signature ${slots > 1 ? 'items' : 'item'}</h2>
+      <p class="muted small">${slots > 1 ? `Up to ${slots} pinned items` : 'The pinned item'} can always be chosen for the starter kit, at the usual price in Prowess, whatever the offer holds. ${esc(p.name)} has <span class="prow">${ico(IC.Prowess, 'sm')}${prowess(p)}</span>. ${slots > 1 ? 'Click a pinned item to unpin it.' : 'Change the pin whenever you like. A second pin is won by clearing any map on Veteran.'}</p>
+      <div class="picker">${groups}</div>
+      <div id="desc" class="desc"></div>
+      <div class="row"><button class="btn" data-act="back" data-default>Back to camp</button><button class="btn ghost" data-act="clear" ${pins.length ? '' : 'disabled'}>${slots > 1 ? 'Clear the pins' : 'Clear the pin'}</button></div></div></div>`,
+    { pin: (el) => pin(el.dataset.id!), clear: () => pin(null), back: hubScreen },
+  );
+}
+
 /** The upgrade tree of the selected hero: four paths side by side. */
 function upgradesScreen(): void {
   const s = G.save!;
@@ -387,7 +472,7 @@ function upgradesScreen(): void {
         ? '<span class="muted small">Max</span>'
         : lock
           ? ico(IC.Lock, 'sm')
-          : `<button class="btn tiny" data-act="buy" data-id="${id}" ${cost > spendable(p) ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`;
+          : `<button class="btn tiny" data-act="buy" data-id="${id}" ${cost > p.renown ? 'disabled' : ''}>${ico(IC.Renown, 'sm')}${cost}</button>`;
     return `<div class="upnode d${upgradeDepth(id)} ${lv ? 'own' : ''} ${lock ? 'locked' : ''}" title="${esc(u.more ?? u.desc)}">
       <div class="l1"><b>${u.name}</b><span class="muted pips">${'●'.repeat(lv)}${'○'.repeat(u.costs.length - lv)}</span></div>
       <div class="l2"><span class="muted small">${u.desc}</span>${action}</div>
@@ -397,12 +482,12 @@ function upgradesScreen(): void {
     (path) => `<div class="panel upcol"><div class="l1"><h3>${path.name}</h3><span class="muted small">${path.blurb}</span></div>${UPGRADES.filter((u) => u.path === path.id).map((u) => node(u.id)).join('')}</div>`,
   ).join('');
   const tabs = s.heroes
-    .map((h, i) => `<button class="btn tiny ${i === selHero ? '' : 'ghost'}" data-act="hero" data-i="${i}">${esc(h.name)} ${ico(IC.Renown, 'sm')}${spendable(h)}</button>`)
+    .map((h, i) => `<button class="btn tiny ${i === selHero ? '' : 'ghost'}" data-act="hero" data-i="${i}">${esc(h.name)} ${ico(IC.Renown, 'sm')}${h.renown}</button>`)
     .join('');
   show(
     'upgrades',
     `<div class="screen upgrades">
-      <div class="hubhead"><h2>Upgrades</h2>${tabs}<span class="grow"></span><span class="muted small">${kitCost(p) ? `${kitCost(p)} renown is held for ${esc(p.name)}'s starter kit. ` : ''}Each upgrade opens once the one above it is high enough.</span>
+      <div class="hubhead"><h2>Upgrades</h2>${tabs}<span class="grow"></span><span class="muted small">Each upgrade opens once the one above it is high enough.</span>
         <button class="btn ghost tiny" data-act="back" data-default>Back to camp</button></div>
       <div class="upcols">${cols}</div>
     </div>`,
@@ -515,7 +600,7 @@ function invGrid(h: number, locked: boolean): string {
   const cell = (l: Loc, st: ItemStack | null, label: string) => {
     const isSel = sel && sel.h === l.h && sel.where === l.where && sel.i === l.i;
     return `<button class="cell ${isSel ? 'sel' : ''}" data-act="cell" data-h="${l.h}" data-w="${l.where}" data-i="${l.i}" ${locked ? 'disabled' : ''} ${st ? `data-item="${st.id}" data-charges="${st.charges ?? ''}"` : ''}>
-      ${st ? ico(ITEMS[st.id].icon) + (st.charges !== undefined ? `<b class="ch">${st.charges}</b>` : '') : `<span class="empty">${label}</span>`}</button>`;
+      ${st ? itemIco(st.id) + (st.charges !== undefined ? `<b class="ch">${st.charges}</b>` : '') : `<span class="empty">${label}</span>`}</button>`;
   };
   const keys = SLOT_KEYS[controlsOf(profileOf(rh))];
   return `<div class="invgrid">
@@ -644,21 +729,21 @@ export function dialog(name: string, lines: string[]): void {
 // ---------------------------------------------------------------- turn flow screens
 
 function loadoutIcons(rh: RunHero): string {
-  return rh.slots.map((s) => ico(ITEMS[s?.id ?? 'fists'].icon)).join('') + (rh.passive ? ico(ITEMS[rh.passive.id].icon) : '');
+  return rh.slots.map((s) => itemIco(s?.id ?? 'fists')).join('') + (rh.passive ? itemIco(rh.passive.id) : '');
 }
 
 export function readyScreen(onGo: () => void): void {
   const r = run();
   const rh = activeHero();
   const p = profileOf(rh);
-  const def = getMap(r.mapId);
+  const def = getMap(r.mapId, r.tier);
   const st = heroStats(G.save!, rh);
   show(
     'ready',
     `<div class="screen dim"><div class="panel ready">
       ${r.heroes.length > 1 ? `<p class="muted">Pass the controls to</p><h4>Player ${r.active + 1}</h4>` : ''}
       <div class="row center">${heroIco(p.color, 'big')}<h2 style="color:${HERO_COLORS[p.color]}">${esc(p.name)}</h2></div>
-      <p>${esc(def.sectionNames[r.checkpoint])} <span class="muted">· section ${r.checkpoint + 1} of ${def.sectionNames.length}</span></p>
+      <p>${esc(def.sectionNames[r.checkpoint])} <span class="muted">· section ${r.checkpoint + 1} of ${def.sectionNames.length} · ${tierDef(r.tier).name}</span></p>
       <p>${ico(IC.HeartUI, 'sm')} ${Math.ceil(rh.hp)}${rh.bonusHp ? ` <b class="bonus">+${Math.ceil(rh.bonusHp)}</b>` : ''} / ${st.maxHp} &nbsp; ${ico(IC.LifeUI, 'sm')} ${r.lives} shared ${r.lives === 1 ? 'life' : 'lives'}</p>
       ${rh.bonusHp ? `<p class="bonus small">Comeback: +${Math.ceil(rh.bonusHp)} health for this turn.</p>` : ''}
       ${rescueNote()}
@@ -712,7 +797,7 @@ let shopBuyer = 0;
 export function campScreen(index: number, arrived: number, onLeave: () => void): void {
   const r = run();
   const s = G.save!;
-  const def = getMap(r.mapId);
+  const def = getMap(r.mapId, r.tier);
   const merchant = def.objects.some((o) => o.type === 'campfire' && o.index === index && o.merchant);
   if (shopBuyer >= r.heroes.length) shopBuyer = 0;
   const redraw = () => campScreen(index, arrived, onLeave);
@@ -801,15 +886,18 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
 
 export function summaryScreen(sum: RunSummary, mapName: string, onDone: () => void): void {
   const rows = sum.rows
-    .map((row) => `<div class="uprow">${heroIco(row.color)}<div class="grow"><b style="color:${HERO_COLORS[row.color]}">${esc(row.name)}</b><br><span class="muted small">${row.gold} gold carried + ${row.bonus} bonus</span></div><b>${ico(IC.Renown, 'sm')}+${row.total}</b></div>`)
+    .map((row) => `<div class="uprow">${heroIco(row.color)}<div class="grow"><b style="color:${HERO_COLORS[row.color]}">${esc(row.name)}</b><br><span class="muted small">${row.gold} gold carried + ${row.bonus} bonus</span>${row.feats.length ? `<br><span class="prow small">${ico(IC.Prowess, 'sm')}+${row.feats.length} Prowess, now ${row.prowess}: ${row.feats.map(esc).join(' · ')}</span>` : ''}</div><b>${ico(IC.Renown, 'sm')}+${row.total}</b></div>`)
     .join('');
-  const unlocks = sum.unlockedItems.length ? `<p class="good">New items join the pool: ${sum.unlockedItems.map((id) => esc(ITEMS[id].name)).join(', ')}</p>` : '';
+  const unlocks =
+    (sum.unlockedItems.length ? `<p class="good">New items join the pool: ${sum.unlockedItems.map((id) => `${itemIco(id, 'sm')}<span class="r${ITEMS[id].rarity}">${esc(ITEMS[id].name)}</span>`).join(', ')}</p>` : '') +
+    sum.opened.map((line) => `<p class="good">${esc(line)}</p>`).join('');
+  const tier = tierDef(sum.tier);
   show(
     'summary',
     `<div class="screen dim ${sum.won ? 'gold' : 'red'}"><div class="panel mid">
-      <h2>${sum.won ? `${esc(mapName)} is cleared!` : 'The run is over'}</h2>
+      <h2>${sum.won ? `${esc(mapName)} is cleared on ${tier.name}!` : 'The run is over'}</h2>
       <p class="muted">${sum.won ? 'The Bandit Chief is beaten. The next map is unlocked (it will be playable once it is built).' : 'The party is out of lives. What you earned comes home with you: spend it at camp and go further next time.'}</p>
-      <p class="small">Reached campfire ${sum.checkpoint} · ${sum.kills} monsters defeated · ${sum.secrets} secrets found</p>
+      <p class="small">${tier.name} tier · Reached campfire ${sum.checkpoint} · ${sum.kills} monsters defeated · ${sum.secrets} secrets found</p>
       ${rows}${unlocks}
       <button class="btn big" data-act="done" data-default>Back to camp</button></div></div>`,
     { done: onDone },

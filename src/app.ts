@@ -2,8 +2,9 @@
 import { audio } from './audio/audio';
 import { G, run } from './core';
 import { getMap } from './data/maps';
+import { tierDef } from './data/tiers';
 import { scene } from './game/scene';
-import { advanceTurn, campRest, createRun, finishRun, heroFell } from './run';
+import { advanceTurn, campRest, createRun, discoverItem, finishRun, heroFell } from './run';
 import { loadSlot, writeSlot } from './save';
 import { showHud } from './ui/hud';
 import * as ui from './ui/ui';
@@ -19,8 +20,8 @@ function nextTurn(): void {
   ui.readyScreen(() => scene.beginTurn());
 }
 
-export function startRun(party: number[], mapId: string): void {
-  G.save!.run = createRun(G.save!, party, mapId);
+export function startRun(party: number[], mapId: string, tier: number): void {
+  G.save!.run = createRun(G.save!, party, mapId, tier);
   scene.loadRun();
   saveNow();
   nextTurn();
@@ -54,17 +55,13 @@ function endRun(won: boolean): void {
   const s = G.save!;
   const r = run();
   if (scene.loaded) scene.syncRun(); // so the map knowledge kept after the run includes this attempt's exploring
-  const def = getMap(r.mapId);
+  const def = getMap(r.mapId, r.tier);
   const unlocked: string[] = [];
   if (won) {
-    for (const id of def.clearUnlocks)
-      if (!s.pool.includes(id)) {
-        s.pool.push(id);
-        unlocked.push(id);
-      }
+    for (const id of def.clearUnlocks) if (discoverItem(s, id)) unlocked.push(id);
     s.mapsUnlocked = Math.max(s.mapsUnlocked, def.number + 1);
   }
-  const summary = finishRun(s, won, unlocked);
+  const summary = finishRun(s, won, unlocked, Math.ceil((def.checkpoints.length - 1) / 2));
   scene.unloadRun();
   showHud(false);
   saveNow();
@@ -107,7 +104,8 @@ export function wireHooks(): void {
     r.lives++;
     for (const rh of r.heroes) rh.earned += 10;
     audio.sfx('phase');
-    ui.toast(phase === 2 ? "The Chief is enraged! His guard is broken again: +1 life." : "The Chief's guard is broken: +1 life. He calls for help!", 'good');
+    const help = (tierDef(r.tier).bossHelp[phase - 1] ?? []).length > 0;
+    ui.toast(`${phase === 2 ? 'The Chief is enraged! His guard is broken again: +1 life.' : "The Chief's guard is broken: +1 life."}${help ? ' He calls for help!' : ''}`, 'good');
   };
 
   G.hooks.onBossDefeated = () => endRun(true);

@@ -136,6 +136,11 @@ export enum IC {
   Lock, // locked / unavailable
   MusicOn, // beamed notes: music toggle, playing
   MusicOff, // the same notes greyed out and struck through
+  Prowess, // blue double chevron: the budget for a starter kit
+  Ember, // Emberbrand: a sword with a burning blade
+  Berserk, // Berserker Charm: a red fang on a cord
+  Dawn, // Dawnbreaker: a blade of light with a sunburst guard
+  Kingsplitter, // the Chief's double-bitted throwing axe
   COUNT,
 }
 
@@ -158,6 +163,11 @@ export const SHEETS = {
   archer: { w: 16, h: 16, frames: 2 }, // hooded bandit with a bow
   bat: { w: 16, h: 16, frames: 2 }, // wings up / wings down
   spider: { w: 16, h: 16, frames: 2 }, // cave spider seen from above
+  // Variants met on the higher difficulty tiers: recoloured from the monster they grow out of
+  brood: { w: 16, h: 16, frames: 2 }, // Brood Slime: purple slime
+  dire: { w: 16, h: 16, frames: 2 }, // Dire Wolf: near-black wolf with a red eye
+  marksman: { w: 16, h: 16, frames: 2 }, // Bandit Marksman: archer in a red hood
+  brute: { w: 16, h: 16, frames: 2 }, // Bandit Brute: bandit in steel plate
   // Mini-boss: frames [walk0, walk1, windup (axe raised), enraged walk0, enraged walk1, enraged windup]
   chief: { w: 32, h: 32, frames: 6 }, // the Bandit Chief: burly, horned helm, big axe
   // NPCs: frames [hermit, merchant]

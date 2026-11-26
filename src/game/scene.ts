@@ -5,8 +5,9 @@ import { audio } from '../audio/audio';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
+import { TIERS, tierDef, type TierDef } from '../data/tiers';
 import { input, moveKeys, slotHeld } from '../input';
-import { ARROW_MAX, ARROW_PILE, RESCUE_REACH, addArrows, fillMissingCharges, giveItem, outfit, hasFlag, heroStats, packBits, rescueFallen, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
+import { ARROW_MAX, ARROW_PILE, RESCUE_REACH, addArrows, discoverItem, fillMissingCharges, giveItem, knowledgeOf, outfit, hasFlag, heroStats, packBits, takePrize, rescueFallen, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
 import { TILE, VIEW_H, VIEW_W, controlsOf, type GroundItem, type ItemStack } from '../types';
 import type { MapDef } from '../world/mapdef';
 import { MELEE_CONE, MELEE_SLACK, RANGED_CONE, leadAngle, pickTarget, type AimTarget } from './aim';
@@ -33,6 +34,9 @@ interface Swing {
   scale: number;
   frame: F;
   sfx: 'punch' | 'swing';
+  tint?: number; // colour of the swing's arc
+  burn?: number; // ms a monster it hits keeps burning; such a blade also lights braziers
+  wave?: boolean; // each swing also sends a piercing wave of light flying on
 }
 const MELEE: Record<string, Swing> = {
   fists: { range: 15, half: 0.95, dmg: 2, knock: 70, stun: 200, scale: 0.7, frame: F.Punch, sfx: 'punch' },
@@ -41,7 +45,16 @@ const MELEE: Record<string, Swing> = {
   longsword: { range: 31, half: 1.3, dmg: 4, knock: 100, stun: 300, scale: 1.55, frame: F.Slash0, sfx: 'swing' },
   cleaver: { range: 25, half: 1.25, dmg: 7, knock: 260, stun: 1000, scale: 1.4, frame: F.Slash0, sfx: 'swing' },
   spear: { range: 36, half: 0.3, dmg: 4.5, knock: 110, stun: 400, scale: 1, frame: F.Thrust, sfx: 'swing' },
+  ember: { range: 25, half: 1.3, dmg: 4.5, knock: 100, stun: 300, scale: 1.25, frame: F.Slash0, sfx: 'swing', tint: 0xff9a3c, burn: 3000 },
+  dawn: { range: 31, half: 1.3, dmg: 5, knock: 110, stun: 300, scale: 1.55, frame: F.Slash0, sfx: 'swing', tint: 0xffe9a0, wave: true },
 };
+
+/** Dawnbreaker's wave of light: it starts where the slash ends and passes through monsters. */
+const WAVE = { speed: 210, dmg: 3, life: 560 };
+/** Kingsplitter: how fast it flies, how long it flies out before turning back, and what it does to each monster each way. */
+const AXE = { speed: 215, out: 520, dmg: 5 };
+/** Berserker Charm: the damage multiplier while its hero is at half health or less. */
+export const RAGE_MULT = 1.5;
 
 interface Shot {
   frame: F;
@@ -74,6 +87,7 @@ function aimReach(id: string): Reach | null {
   if (sw) return { kind: 'swing', reach: sw.range + MELEE_SLACK, cone: MELEE_CONE, speed: 0, fire: false };
   // a shot fades at the end of its life: stop a little short, so the assist never picks a target the shot dies in front of
   if (sh) return { kind: 'shot', reach: ((sh.speed * sh.life) / 1000) * 0.92, cone: RANGED_CONE, speed: sh.speed, fire: !!sh.fire };
+  if (id === 'kingsplitter') return { kind: 'shot', reach: ((AXE.speed * AXE.out) / 1000) * 0.92, cone: RANGED_CONE, speed: AXE.speed, fire: false };
   if (id === 'bombs') return { kind: 'throw', reach: BOMB_THROW, cone: RANGED_CONE, speed: 0, fire: false };
   return null;
 }
@@ -94,6 +108,8 @@ export class GameScene extends Phaser.Scene {
   bombs: Bomb[] = [];
   boss: Mon | null = null;
   attemptKills: string[] = [];
+  /** The difficulty tier of the loaded run. */
+  tier: TierDef = TIERS[0];
   /** Secrets the Treasure Nose upgrade has already chimed for this turn. */
   private sniffed = new Set<string>();
   prompt = '';
@@ -121,6 +137,8 @@ export class GameScene extends Phaser.Scene {
   private promptGround: GroundItem | null = null;
   private leverDebounce = new Map<Obj, number>();
   private ending = false;
+  private wasRaging = false;
+  private rageTold = false; // the Berserker Charm explains itself once a turn
 
   constructor() {
     super('game');
@@ -146,7 +164,8 @@ export class GameScene extends Phaser.Scene {
     this.unloadRun();
     const r = run();
     fillMissingCharges(r);
-    this.def = getMap(r.mapId);
+    this.def = getMap(r.mapId, r.tier);
+    this.tier = tierDef(r.tier);
     this.world = new World(this.def, r, G.save!);
     const { w, h } = this.world;
     const data: number[][] = [];
@@ -237,6 +256,7 @@ export class GameScene extends Phaser.Scene {
     this.clearActors();
     this.attemptKills = [];
     this.sniffed.clear();
+    this.wasRaging = this.rageTold = false;
     this.world.bossLocked = false;
     this.world.resetPuzzlePieces();
     for (const o of this.world.objs) {
@@ -386,7 +406,15 @@ export class GameScene extends Phaser.Scene {
     h.spr.setFrame(base + step).setFlipX(base === 4 && c < 0);
     h.spr.setPosition(Math.round(h.x), Math.round(h.y)).setDepth(entDepth(h.y));
     h.spr.setAlpha(h.iframes > 0 && Math.floor(this.clock / 70) % 2 ? 0.35 : 1);
-    h.spr.setTint(h.slowT > 0 ? 0x9fd0ff : 0xffffff);
+    const rage = this.raging();
+    if (rage && !this.wasRaging) {
+      audio.sfx('bossRoar');
+      this.fx(F.Spark, h.x, h.y - 12, 300);
+      if (!this.rageTold) G.hooks.toast(`Berserker Charm: +${Math.round((RAGE_MULT - 1) * 100)}% damage while at half health or less.`, 'info');
+      this.rageTold = true;
+    }
+    this.wasRaging = rage;
+    h.spr.setTint(h.slowT > 0 ? 0x9fd0ff : rage && Math.floor(this.clock / 140) % 2 ? 0xff8a7a : 0xffffff);
     h.shield
       .setVisible(h.blocking)
       .setPosition(h.x + c * 8, h.y - 3 + sn * 8)
@@ -582,7 +610,7 @@ export class GameScene extends Phaser.Scene {
     w.computeFlow(htx, hty);
     // plates
     const solvedNow = w.updatePlates(htx, hty);
-    for (const p of solvedNow) this.solvePuzzle(p, 'The gate grinds open for good.');
+    for (const p of solvedNow) this.solvePuzzle(p, w.ofPuzzle(p, 'hidden').length ? 'The stone settles. A slab in the rock stays open.' : 'The gate grinds open for good.');
     let plateChanged = false;
     for (const o of w.objs) {
       if (o.def.type !== 'plate') continue;
@@ -616,11 +644,13 @@ export class GameScene extends Phaser.Scene {
         setFlag(r, 'secret:' + o.def.secret);
         r.secretsFound++;
         activeHero().earned += 10;
-        const k = (G.save!.knowledge[this.def.id] ??= { secrets: [], shortcuts: [], bestCheckpoint: 0, clears: 0 });
+        const k = knowledgeOf(G.save!, this.def.id);
         if (!k.secrets.includes(o.def.secret!)) k.secrets.push(o.def.secret!);
         const name = this.def.secrets.find((x) => x.id === o.def.secret)?.name ?? 'A secret';
         audio.sfx('secret');
-        G.hooks.toast(`Secret found: ${name}  (+10 renown)`, 'good');
+        // the pedestal of a secret whose prize was won on an earlier run stands empty from the start
+        const won = w.objs.some((p) => p.def.type === 'pedestal' && p.def.secret === o.def.secret && p.open);
+        G.hooks.toast(`Secret found: ${name}  (+10 renown)${won ? '. Its prize was won on an earlier run.' : ''}`, 'good');
       }
     }
     // the boss hall seals once you step inside
@@ -710,7 +740,7 @@ export class GameScene extends Phaser.Scene {
       audio.sfx('deny');
       return;
     }
-    const mult = this.stats.dmgMult;
+    const mult = this.stats.dmgMult * (this.raging() ? RAGE_MULT : 1);
     const target = this.assist(id);
     if (MELEE[id]) this.melee(MELEE[id], mult);
     else if (SHOTS[id]) this.shoot(SHOTS[id], mult);
@@ -759,6 +789,13 @@ export class GameScene extends Phaser.Scene {
           audio.sfx('dash');
           break;
         }
+        case 'kingsplitter': {
+          const c = Math.cos(h.aim);
+          const s = Math.sin(h.aim);
+          this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * AXE.speed, s * AXE.speed, { frame: F.Axe, dmg: AXE.dmg * mult, life: 3000, fromHero: true, spin: 16, r: 5, pierce: true, back: { t: AXE.out, slot: i, turned: false } });
+          audio.sfx('swing');
+          break;
+        }
         case 'scroll':
           this.world.revealAround(tx(h.x), tx(h.y), 22);
           this.updateVision(true);
@@ -792,6 +829,7 @@ export class GameScene extends Phaser.Scene {
     const s = Math.sin(h.aim);
     const reach = frame === F.Thrust ? range * 0.55 : range * 0.6;
     const spr = this.add.image(h.x + c * reach, h.y - 3 + s * reach, 'fx', frame).setRotation(h.aim).setScale(frame === F.Thrust ? 2 : scale, scale).setDepth(DEPTH.fx);
+    if (sw.tint) spr.setTint(sw.tint);
     this.time.delayedCall(60, () => frame === F.Slash0 && spr.active && spr.setFrame(F.Slash1));
     this.tweens.add({ targets: spr, alpha: 0, duration: 130, delay: 40, onComplete: () => spr.destroy() });
     const inArc = (x: number, y: number, r: number) => {
@@ -799,18 +837,25 @@ export class GameScene extends Phaser.Scene {
       if (d > range) return false;
       return d < 5 || angDiff(Math.atan2(y - h.y, x - h.x), h.aim) <= half;
     };
-    let landed = false;
+    const struck = new Set<Mon>();
     for (const m of this.mons) {
       if (m.dead || !inArc(m.x, m.y, m.r)) continue;
       if (!this.world.los(tx(h.x), tx(h.y), tx(m.x), tx(m.y))) continue;
       const a = Math.atan2(m.y - h.y, m.x - h.x);
       damageMon(this, m, dmg, Math.cos(a) * knock, Math.sin(a) * knock, sw.stun);
-      landed = true;
+      struck.add(m);
+      if (sw.burn && !m.dead) {
+        m.burnT = Math.max(m.burnT, sw.burn);
+        this.fx(F.Firebolt1, m.x, m.y - 6, 300);
+      }
     }
     for (const o of this.world.objs) {
-      if ((o.def.type === 'pot' && !o.open) || o.def.type === 'lever') if (inArc(center(o.x), center(o.y), 6)) this.hitObject(o, false);
+      const t = o.def.type;
+      if ((t === 'pot' && !o.open) || t === 'lever' || (t === 'brazier' && sw.burn)) if (inArc(center(o.x), center(o.y), 6)) this.hitObject(o, !!sw.burn);
     }
-    if (landed) audio.sfx('hit');
+    if (struck.size) audio.sfx(sw.burn ? 'torch' : 'hit');
+    // the wave leaves from the end of the slash and spares what the slash itself just hit
+    if (sw.wave) this.addProj(h.x + c * range * 0.8, h.y - 3 + s * range * 0.8, c * WAVE.speed, s * WAVE.speed, { frame: F.Slash0, dmg: WAVE.dmg * mult, life: WAVE.life, fromHero: true, pierce: true, trail: true, tint: 0xffe9a0, scale: 1.3, r: 7, skip: struck });
   }
 
   private shoot(sh: Shot, mult: number): void {
@@ -821,9 +866,23 @@ export class GameScene extends Phaser.Scene {
     audio.sfx(sh.sfx);
   }
 
-  addProj(x: number, y: number, vx: number, vy: number, o: { frame: F; dmg: number; life: number; fromHero: boolean; fire?: boolean; web?: boolean; spin?: number; r?: number }): void {
+  addProj(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    o: { frame: F; dmg: number; life: number; fromHero: boolean; fire?: boolean; web?: boolean; spin?: number; r?: number; pierce?: boolean; trail?: boolean; tint?: number; scale?: number; skip?: Set<Mon>; back?: Proj['back'] },
+  ): void {
     const spr = this.add.image(x, y, 'fx', o.frame).setRotation(Math.atan2(vy, vx)).setDepth(DEPTH.fx);
-    this.projs.push({ x, y, vx, vy, r: o.r ?? 3, dmg: o.dmg, fromHero: o.fromHero, life: o.life, pierce: false, fire: !!o.fire, web: !!o.web, spin: o.spin ?? 0, hit: new Set(), spr });
+    if (o.tint) spr.setTint(o.tint);
+    if (o.scale) spr.setScale(o.scale);
+    this.projs.push({ x, y, vx, vy, r: o.r ?? 3, dmg: o.dmg, fromHero: o.fromHero, life: o.life, pierce: !!o.pierce, trail: o.trail ? 0 : undefined, back: o.back, fire: !!o.fire, web: !!o.web, spin: o.spin ?? 0, hit: new Set(o.skip), spr });
+  }
+
+  /** True while the Berserker Charm is doing its work: its hero is at half health or less. */
+  raging(): boolean {
+    const rh = activeHero();
+    return rh.passive?.id === 'berserk' && rh.hp > 0 && rh.hp <= this.stats.maxHp / 2;
   }
 
   private updateProjectiles(dt: number): void {
@@ -831,19 +890,45 @@ export class GameScene extends Phaser.Scene {
     const h = this.hero!;
     for (const p of this.projs) {
       p.life -= dt;
+      let caught = false;
+      const b = p.back;
+      if (b) {
+        // a returning weapon flies out, then homes in on the hero's hand; it can hit each monster once each way
+        b.t -= dt;
+        if (!b.turned && b.t <= 0) {
+          b.turned = true;
+          p.hit.clear();
+        }
+        if (b.turned) {
+          const d = Math.hypot(h.x - p.x, h.y - 3 - p.y) || 1;
+          p.vx = ((h.x - p.x) / d) * AXE.speed * 1.15;
+          p.vy = ((h.y - 3 - p.y) / d) * AXE.speed * 1.15;
+          caught = d < 9 || h.dead;
+        }
+      }
       p.x += p.vx * s;
       p.y += p.vy * s;
       p.spr.setPosition(p.x, p.y);
       if (p.spin) p.spr.rotation += p.spin * s;
       if (p.fire) p.spr.setFrame(Math.floor(this.clock / 90) % 2 ? F.Firebolt1 : F.Firebolt0);
-      p.spr.setVisible(!!this.world.visible[this.world.idx(tx(p.x), tx(p.y))]);
-      let gone = p.life <= 0;
+      const seen = !!this.world.visible[this.world.idx(tx(p.x), tx(p.y))];
+      p.spr.setVisible(seen);
+      if (p.trail !== undefined && (p.trail -= dt) <= 0) {
+        p.trail = 45;
+        if (seen) this.fx(F.Sparkle, p.x + (Math.random() - 0.5) * 8, p.y + (Math.random() - 0.5) * 8, 280);
+      }
+      let gone = p.life <= 0 || caught;
       const ptx = tx(p.x);
       const pty = tx(p.y);
-      if (!gone && this.world.solid(ptx, pty)) {
-        gone = true;
+      if (!gone && this.world.solid(ptx, pty) && !b?.turned) {
         const o = this.world.objAt(ptx, pty);
         if (o && p.fromHero) this.hitObject(o, p.fire);
+        if (b) {
+          // it bounces off the wall and starts back early
+          b.turned = true;
+          p.hit.clear();
+          this.fx(F.Spark, p.x, p.y, 120);
+        } else gone = true;
       }
       if (!gone && p.fromHero) {
         for (const m of this.mons) {
@@ -851,6 +936,10 @@ export class GameScene extends Phaser.Scene {
           const sp = Math.hypot(p.vx, p.vy) || 1;
           damageMon(this, m, p.dmg, (p.vx / sp) * 80, (p.vy / sp) * 80);
           audio.sfx('hit');
+          if (p.pierce) {
+            p.hit.add(m);
+            continue;
+          }
           gone = true;
           break;
         }
@@ -858,9 +947,14 @@ export class GameScene extends Phaser.Scene {
         this.hurtHero(p.dmg, p.x - p.vx * 0.05, p.y - p.vy * 0.05, { slow: p.web, knock: 90 });
         gone = true;
       }
+      if (caught && b && !h.dead && activeHero().slots[b.slot]?.id === 'kingsplitter') {
+        // back in hand: ready to throw again almost at once
+        h.cd[b.slot] = Math.min(h.cd[b.slot], 120);
+        audio.sfx('pickup');
+      }
       if (gone) {
         if (p.fire) this.explode(p.x, p.y, 16, p.dmg * 0.6, false);
-        else if (p.life > 0) this.fx(F.Spark, p.x, p.y, 120);
+        else if (p.life > 0 && !caught) this.fx(F.Spark, p.x, p.y, 120);
         p.life = -1;
         p.spr.destroy();
       }
@@ -989,8 +1083,8 @@ export class GameScene extends Phaser.Scene {
       const m = this.add.image(center(o.x + 1), center(o.y), 'npc', 1).setDepth(entDepth(center(o.y)));
       this.itemSpr.set(o, m);
     }
-    if (d.type === 'pedestal' && d.item) {
-      const icon = this.add.image(center(o.x), center(o.y) - 7, 'icons', ITEMS[d.item].icon).setDepth(entDepth(center(o.y)) + 0.01).setVisible(!o.open);
+    if (d.type === 'pedestal' && o.item) {
+      const icon = this.add.image(center(o.x), center(o.y) - 7, 'icons', ITEMS[o.item].icon).setDepth(entDepth(center(o.y)) + 0.01).setVisible(!o.open);
       this.itemSpr.set(o, icon);
     }
   }
@@ -1060,7 +1154,7 @@ export class GameScene extends Phaser.Scene {
       G.hooks.toast(`The far gate lifts. ${o.def.timed} seconds!`, 'info');
     } else {
       if (o.def.meta) {
-        const k = (G.save!.knowledge[this.def.id] ??= { secrets: [], shortcuts: [], bestCheckpoint: 0, clears: 0 });
+        const k = knowledgeOf(G.save!, this.def.id);
         if (!k.shortcuts.includes(p)) k.shortcuts.push(p);
         this.solvePuzzle(p, 'Shortcut opened. It will stay open on every future run.');
       } else this.solvePuzzle(p, 'Something unlocks nearby.');
@@ -1079,7 +1173,7 @@ export class GameScene extends Phaser.Scene {
       audio.sfx('torch');
       this.refreshObjSprite(o);
       if (litCount + 1 === all.length) {
-        this.solvePuzzle(p, 'The fires burn steady. The vault gate opens.');
+        this.solvePuzzle(p, w.ofPuzzle(p, 'hidden').length ? 'The fire catches. Stone grinds somewhere close.' : 'The fires burn steady. The vault gate opens.');
         this.applyGateChanges(w.syncGates());
       }
     } else {
@@ -1138,7 +1232,7 @@ export class GameScene extends Phaser.Scene {
       else if (t === 'lever' && !this.world.solved(o.def.puzzle!)) label = 'Pull lever';
       else if (t === 'brazier' && !o.lit) label = 'Light brazier';
       else if (t === 'shrine' && !o.open) label = 'Pray at the shrine';
-      else if (t === 'pedestal' && !o.open) label = `Take ${ITEMS[o.def.item!].name}`;
+      else if (t === 'pedestal' && !o.open) label = `Take ${ITEMS[o.item!].name}`;
       else if (t === 'sconce') label = 'Examine torch';
       else if (t === 'block' && !this.world.solved(o.def.puzzle ?? '')) label = 'Send the stone back';
       else if (t === 'door' && !o.open) label = r.keys.includes(o.def.key!) ? `Unlock (${o.def.key} key)` : `Locked: needs the ${o.def.key} key`;
@@ -1217,11 +1311,17 @@ export class GameScene extends Phaser.Scene {
         o.open = true;
         setFlag(r, 'o:' + d.id);
         this.refreshObjSprite(o);
-        const def = ITEMS[d.item!];
-        if (!G.save!.pool.includes(def.id)) {
-          G.save!.pool.push(def.id);
-          G.hooks.toast(`New item discovered: ${def.name}. It can now appear in chests, shops and starter kits.`, 'good');
-          audio.sfx('secret');
+        const def = ITEMS[o.item!];
+        if (d.secret) takePrize(G.save!, this.def.id, d.secret); // a secret's prize is won once per save
+        if (discoverItem(G.save!, def.id)) {
+          const legend = def.rarity === 3;
+          G.hooks.toast(`${legend ? 'Legendary item' : 'New item'} discovered: ${def.name}. It can now appear in chests and shops, and will be in the next starter kit offers.`, 'good');
+          audio.sfx(legend ? 'victory' : 'secret');
+          if (legend) {
+            // a legendary is found with a fanfare
+            this.cameras.main.flash(350, 255, 233, 160);
+            for (let n = 0; n < 10; n++) this.time.delayedCall(n * 70, () => this.fx(F.Sparkle, center(o.x) + (Math.random() - 0.5) * 30, center(o.y) - 6 + (Math.random() - 0.5) * 26, 500));
+          }
         }
         this.grantItem(outfit(profileOf(rh), def.charges ? { id: def.id, charges: def.charges } : { id: def.id }), center(o.x), center(o.y) + 12);
         break;
@@ -1320,7 +1420,11 @@ export class GameScene extends Phaser.Scene {
       const spr = this.objSpr.get(o);
       if (d.type === 'campfire' && d.index! <= run().checkpoint) spr?.setFrame(O.CampfireOn0 + flame);
       else if (d.type === 'brazier' && o.lit) spr?.setFrame(O.BrazierOn0 + flame);
-      else if (d.type === 'pedestal' && !o.open) this.itemSpr.get(o)?.setY(center(o.y) - 7 + Math.sin(this.clock / 300) * 1.5);
+      else if (d.type === 'pedestal' && !o.open) {
+        this.itemSpr.get(o)?.setY(center(o.y) - 7 + Math.sin(this.clock / 300) * 1.5);
+        // a legendary on its pedestal sheds light
+        if (o.item && ITEMS[o.item].rarity === 3 && this.world.visible[this.world.idx(o.x, o.y)] && Math.random() < dt / 260) this.fx(F.Sparkle, center(o.x) + (Math.random() - 0.5) * 16, center(o.y) - 8 + (Math.random() - 0.5) * 12, 450);
+      }
       else if (d.type === 'spikes' && o.exists) {
         o.timer = (o.timer + dt) % (d.period ?? 2400);
         const up = o.timer < (d.period ?? 2400) * 0.36;
@@ -1328,14 +1432,14 @@ export class GameScene extends Phaser.Scene {
           o.up = up;
           spr?.setFrame(up ? O.SpikesUp : O.SpikesDown);
         }
-        if (up && !h.dead && tx(h.x) === o.x && tx(h.y) === o.y) this.hurtHero(this.stats.trapDmg, h.x, h.y + 4, { knock: 0 });
+        if (up && !h.dead && tx(h.x) === o.x && tx(h.y) === o.y) this.hurtHero(this.stats.trapDmg + this.tier.trapDmg, h.x, h.y + 4, { knock: 0 });
       } else if (d.type === 'arrowtrap' && o.exists) {
         o.timer += dt;
         if (o.timer >= (d.period ?? 1500)) {
           o.timer -= d.period ?? 1500;
           if (Math.hypot(center(o.x) - h.x, center(o.y) - h.y) < 14 * TILE) {
             const [dx, dy] = [[0, 1], [-1, 0], [0, -1], [1, 0]][d.dir ?? 0];
-            this.addProj(center(o.x) + dx * 12, center(o.y) + dy * 12, dx * 150, dy * 150, { frame: F.EnemyArrow, dmg: this.stats.trapDmg, life: 2000, fromHero: false });
+            this.addProj(center(o.x) + dx * 12, center(o.y) + dy * 12, dx * 150, dy * 150, { frame: F.EnemyArrow, dmg: this.stats.trapDmg + this.tier.trapDmg, life: 2000, fromHero: false });
           }
         }
       }

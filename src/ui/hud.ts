@@ -12,6 +12,8 @@ import { musicIcon, toggleMusic } from './sound';
 export const HERO_COLORS = ['#5aa2ff', '#ff6a5a', '#6fd36a', '#f2c84b', '#ff7fc0'];
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 export const ico = (i: number, cls = '') => `<i class="ico ${cls}" style="--i:${i}"></i>`;
+/** An item's icon. Rare items glint and legendary ones glow. */
+export const itemIco = (id: string, cls = '') => ico(ITEMS[id].icon, `${cls} ${['', '', 'rare', 'legend'][ITEMS[id].rarity]}`);
 
 let el: HTMLElement;
 let mini: CanvasRenderingContext2D;
@@ -93,7 +95,7 @@ export function hudFrame(): void {
   set('gold', String(rh.gold));
   set('keys', r.keys.map((k) => ico(k === 'blue' ? IC.KeyBlueUI : IC.KeyRedUI, 'sm')).join(''));
   set('lives', String(r.lives) + (r.fallen ? ' <span class="risk">+1 to rescue</span>' : ''));
-  set('section', esc(scene.def.sectionNames[r.checkpoint] ?? ''));
+  set('section', `${esc(scene.def.sectionNames[r.checkpoint] ?? '')} · ${scene.tier.name}`);
   const total = scene.def.checkpoints.length;
   set('pips', Array.from({ length: total }, (_, i) => `<i class="pip ${i <= r.checkpoint ? 'on' : ''}"></i>`).join('') + '<i class="pip bosspip"></i>');
   const keys = SLOT_KEYS[controlsOf(p)];
@@ -101,12 +103,12 @@ export function hudFrame(): void {
     set(`k${i}`, keys[i]);
     const s = rh.slots[i];
     const def = ITEMS[s?.id ?? 'fists'];
-    set(`s${i}`, ico(def.icon) + (s?.charges !== undefined ? `<b class="ch ${s.charges <= 0 ? 'zero' : ''}">${s.charges}</b>` : ''));
+    set(`s${i}`, itemIco(def.id) + (s?.charges !== undefined ? `<b class="ch ${s.charges <= 0 ? 'zero' : ''}">${s.charges}</b>` : ''));
     const frac = h && h.cdMax[i] > 0 ? h.cd[i] / h.cdMax[i] : 0;
     style(`cd${i}`, 'height', `${(Math.max(0, Math.min(1, frac)) * 100).toFixed(0)}%`);
   }
   set('music', musicIcon());
-  set('s3', rh.passive ? ico(ITEMS[rh.passive.id].icon) : '<span class="none">-</span>');
+  set('s3', rh.passive ? itemIco(rh.passive.id) : '<span class="none">-</span>');
 
   let prompt = scene.prompt ? `<kbd>E</kbd> ${esc(scene.prompt)}` : '';
   for (const [, secs] of Object.entries(scene.world.timers)) if (secs > 0) prompt = `Gate closes in ${secs.toFixed(1)}s`;
