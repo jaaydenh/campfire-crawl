@@ -1,4 +1,5 @@
 import { STARTER_POOL } from './data/items';
+import { MAPS, getMap } from './data/maps';
 import { SAVE_VERSION, type SaveFile } from './types';
 
 const KEY = (slot: number) => `campfire-crawl.save.${slot}`;
@@ -40,6 +41,16 @@ export function parseSave(text: string): SaveFile {
   // The sword that map 1's hidden grove used to unlock is now every hero's starter weapon, and the grove
   // holds the longsword instead: a save that found the old sword has the longsword unlocked.
   if (save.pool.includes('sword')) save.pool = [...new Set(save.pool.map((id) => (id === 'sword' ? 'longsword' : id)))];
+  // Secrets used to hand out the item on their pedestal on every run; now it is a prize won once per save.
+  // A save from before has won the prize of each secret it found, unless that item never reached its pool.
+  for (const [mapId, k] of Object.entries(save.knowledge)) {
+    if (k.prizes) continue;
+    const def = MAPS.find((m) => m.id === mapId)?.build ? getMap(mapId) : null;
+    k.prizes = k.secrets.filter((id) => {
+      const item = def?.objects.find((o) => o.type === 'pedestal' && o.secret === id)?.item;
+      return !item || save.pool.includes(item);
+    });
+  }
   return save;
 }
 

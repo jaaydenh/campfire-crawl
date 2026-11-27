@@ -1,7 +1,8 @@
 // The live state of a map during a run: what is open, solved, explored and visible.
 // No rendering here, so the rules can be reasoned about (and tested) on their own.
 import { T } from '../art/manifest';
-import { hasFlag } from '../run';
+import { tierDef } from '../data/tiers';
+import { hasFlag, pedestalItem, prizeTaken } from '../run';
 import { seeded } from '../rng';
 import type { RunState, SaveFile } from '../types';
 import { OPAQUE_TILES, PIT_TILES, SOLID_OBJECTS, SOLID_TILES, type MapDef, type MapObject } from '../world/mapdef';
@@ -12,6 +13,7 @@ export interface Obj {
   x: number; // current tile (blocks move)
   y: number;
   open: boolean; // door/gate open, chest opened, pot broken, shrine used, pedestal taken
+  item?: string; // pedestal: the item it holds in this run
   lit: boolean; // brazier
   on: boolean; // lever
   pressed: boolean; // plate
@@ -56,8 +58,12 @@ export class World {
     for (const d of def.objects) {
       const o: Obj = { def: d, x: d.x, y: d.y, open: false, lit: false, on: false, pressed: false, exists: true, up: false, timer: 0 };
       if (d.type === 'chest' || d.type === 'pot' || d.type === 'door' || d.type === 'shrine' || d.type === 'pedestal') o.open = hasFlag(run, 'o:' + d.id);
+      if (d.type === 'pedestal') o.item = pedestalItem(run, save, d);
+      // a secret's prize is won once per save: in later runs its pedestal stands empty
+      if (d.type === 'pedestal' && d.secret && prizeTaken(save, def.id, d.secret)) o.open = true;
       if (d.type === 'spikes' || d.type === 'arrowtrap') {
-        o.exists = d.chance === undefined || seeded(run.seed, d.id).next() < d.chance;
+        // optional traps are there more often on higher tiers
+        o.exists = d.chance === undefined || seeded(run.seed, d.id).next() < d.chance + tierDef(run.tier).trapChance;
         o.timer = (d.phase ?? 0) * (d.period ?? 2000);
       }
       this.objs.push(o);

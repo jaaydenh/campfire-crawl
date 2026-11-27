@@ -29,7 +29,7 @@ h4 { font-size: 20px; color: var(--gold); margin-top: 12px; }
 .small { font-size: 16px; }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
-.r0 { color: var(--text); } .r1 { color: #7ec8ff; } .r2 { color: #e9a0ff; }
+.r0 { color: var(--text); } .r1 { color: #7ec8ff; } .r2 { color: #e9a0ff; } .r3 { color: #ffcf5a; text-shadow: 0 0 6px #b8741a; }
 .grow { flex: 1; min-width: 0; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.center { justify-content: center; }
@@ -72,6 +72,11 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 
 .ico { display: inline-block; width: 48px; height: 48px; background-image: var(--icons); background-position: calc(var(--i) * -48px) 0; background-size: auto 48px; image-rendering: pixelated; vertical-align: middle; flex: none; }
 .ico.sm { width: 24px; height: 24px; background-position: calc(var(--i) * -24px) 0; background-size: auto 24px; margin-right: 3px; }
+.ico.rare { animation: glint 2.6s ease-in-out infinite; }
+.ico.legend { animation: legend 1.6s ease-in-out infinite; }
+.ico.sil { filter: brightness(0) drop-shadow(0 0 1px #a39cc0); opacity: 0.85; }
+@keyframes glint { 0%, 80%, 100% { filter: none; } 88% { filter: brightness(1.8); } }
+@keyframes legend { 0%, 100% { filter: drop-shadow(0 0 2px #ffcf5a); } 50% { filter: drop-shadow(0 0 6px #ffe9a0) brightness(1.3); } }
 .heroico { display: inline-block; width: 48px; height: 48px; background-image: var(--hero); background-position: 0 0; background-size: auto 48px; image-rendering: pixelated; flex: none; }
 .heroico.big { width: 80px; height: 80px; background-size: auto 80px; }
 
@@ -87,17 +92,30 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .hubcols { display: flex; gap: 12px; flex: 1; min-height: 0; }
 .hubcols .heroes { width: 310px; }
 .hubcols .detail { flex: 1; overflow-y: auto; }
-.hubcols .maps { width: 310px; }
+.hubcols .maps { width: 320px; overflow-y: auto; }
 .maplist { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .herocard { display: flex; align-items: center; gap: 8px; padding: 6px; border: 3px solid transparent; background: var(--panel2); cursor: pointer; }
 .herocard.sel { border-color: var(--gold); }
 .uprow { display: flex; align-items: center; gap: 10px; padding: 3px 0; border-bottom: 2px dotted #3a355c; }
-.maprow { padding: 4px 6px; background: var(--panel2); }
+.maprow { padding: 2px 6px; background: var(--panel2); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 17px; white-space: nowrap; }
+.maprow b { overflow: hidden; text-overflow: ellipsis; }
 .maprow.locked { opacity: 0.45; }
 .maprow.open { border-left: 5px solid var(--gold); }
+.tiers { display: grid; gap: 3px; margin: 5px 0; }
+.runbox { flex-shrink: 0; }
+.runbox p { margin: 4px 0; }
+.maplist { min-height: 78px; }
+.runbox .btn.big { padding-top: 6px; padding-bottom: 6px; }
+.tiers .pick .cost { color: var(--muted, #9a94c0); font-size: 15px; }
+.tiers .pick.on .cost { color: var(--gold); }
 .colorpick { background: #000; border: 3px solid var(--line); padding: 4px; cursor: pointer; }
 .colorpick:hover { border-color: var(--gold); }
-.picker { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+.picker { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; margin-top: 6px; align-items: center; }
+.picks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; align-items: center; }
+.picks .btn { justify-self: start; }
+.pick { position: relative; }
+.pick .new { position: absolute; top: -7px; right: -3px; font-size: 12px; line-height: 1; color: #000; background: var(--good); padding: 1px 3px; }
+.prow { color: #9fd4ff; }
 .pick { font: inherit; font-size: 17px; color: var(--text); background: #000; border: 2px solid var(--line); padding: 3px 6px; display: flex; align-items: center; gap: 4px; cursor: pointer; text-align: left; }
 .pick:hover:not(:disabled) { border-color: var(--gold); }
 .pick:disabled { opacity: 0.4; cursor: default; }

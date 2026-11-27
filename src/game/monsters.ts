@@ -3,8 +3,8 @@ import { F, O } from '../art/manifest';
 import { audio } from '../audio/audio';
 import { G, run } from '../core';
 import { CHIEF_PHASES, GENERATOR_SPAWN, MONSTERS } from '../data/monsters';
+import { scaleDmg, scaleHp, spawnOn, tierMonster } from '../data/tiers';
 import { bowEquipped, hasFlag, setFlag } from '../run';
-import { seeded } from '../rng';
 import { TILE } from '../types';
 import { angDiff, type Mon } from './ents';
 import { DEPTH, type GameScene } from './scene';
@@ -24,16 +24,23 @@ const ARCHER_STANDOFF = 73; // and walks closer while the hero is further than t
 const WEB_SPEED = 125;
 const WEB_REACH = 131; // a spider's web fades after flying this far
 const SPIDER_RANGE = 64; // a spider spits once the hero is this close
+const VOLLEY_SPREAD = 0.3; // radians between the arrows of a marksman's fan
+const BRUTE = { from: 26, reach: 36, half: 1.3, windup: 620, recover: 800, knock: 260 }; // a heavy swing, against 20 / 27 / 1.1 / 430 / 600
+const SLAM = { r: 50, wind: 800, cd: 6500, from: 42 }; // the Chief's shockwave: radius, wind-up, cooldown, and how close the hero must be
+const LEAP = { r: 38, wind: 700, lock: 360, air: 380, cd: 7500, min: 60, max: 175 }; // his jump: landing radius, timings, and the range he jumps from
+const BURN_EVERY = 600; // ms between ticks of burn damage
+const BURN_DMG = 1; // per tick, before the hero's damage bonus
 
 function makeMon(s: GameScene, type: string, x: number, y: number, spawnId: string | null, parent: Mon | null): Mon {
-  const def = MONSTERS[type];
+  const def = tierMonster(MONSTERS[type], s.tier); // this tier's health and damage
   const gen = def.ai === 'generator';
   const spr = gen ? s.add.image(x, y, 'objects', type === 'den' ? O.Den : O.Nest) : s.add.image(x, y, def.sheet, 0).setOrigin(0.5, def.ai === 'boss' ? 0.72 : 0.65);
   spr.setDepth(DEPTH.ent + y / 100).setVisible(false);
+  if (def.scale) spr.setScale(def.scale);
   return {
     spawnId, def, x, y, kx: 0, ky: 0, hp: def.hp, maxHp: def.hp, r: def.radius,
     state: 'idle', t: gen ? 1500 : 0, cd: 400 + Math.random() * 600, hitCd: 0,
-    alerted: false, lostT: 0, slowT: 0, stunT: 0, flashT: 0, face: 1, dirX: 1, dirY: 0,
+    alerted: false, lostT: 0, slowT: 0, stunT: 0, chain: 0, burnT: 0, burnTick: 0, flashT: 0, face: 1, dirX: 1, dirY: 0,
     homeX: x, homeY: y, wanderT: Math.random() * 3000, wx: x, wy: y, anim: Math.random() * 1000, seed: Math.random() * 100,
     parent, children: 0, dead: false, boss: null, spr, mark: null,
   };
@@ -42,15 +49,15 @@ function makeMon(s: GameScene, type: string, x: number, y: number, spawnId: stri
 export function spawnMonsters(s: GameScene): void {
   const r = run();
   for (const sp of s.def.spawns) {
-    if (r.dead.includes(sp.id)) continue;
-    const type = seeded(r.seed, sp.id).pick(sp.options);
+    const type = r.dead.includes(sp.id) ? null : spawnOn(sp, r.seed, s.tier);
+    if (!type) continue;
     s.mons.push(makeMon(s, type, center(sp.x), center(sp.y), sp.id, null));
   }
   if (!hasFlag(r, 'boss:dead')) {
     const b = s.def.boss;
     const m = makeMon(s, b.type, center(b.x), center(b.y), null, null);
-    m.hp = m.maxHp = CHIEF_PHASES[r.bossPhase];
-    m.boss = { phase: r.bossPhase, mode: 'idle', t: 0, ang: 0, chargeCd: 3500, throwCd: 2500, whirlCd: 4000, chain: 0 };
+    m.hp = m.maxHp = scaleHp(CHIEF_PHASES[r.bossPhase], s.tier);
+    m.boss = { phase: r.bossPhase, mode: 'idle', t: 0, ang: 0, chargeCd: 3500, throwCd: 2500, whirlCd: 4000, chain: 0, slamCd: 4500, leapCd: 6000, sx: 0, sy: 0, tx: 0, ty: 0 };
     s.mons.push(m);
     s.boss = m;
   }
@@ -147,6 +154,12 @@ export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: num
     ky *= 0.12;
   }
   if (m.def.ai === 'generator') kx = ky = 0;
+  if (m.def.heavy) {
+    // a brute barely budges and shakes a stun off fast
+    kx *= 0.3;
+    ky *= 0.3;
+    stun *= 0.4;
+  }
   if (m.boss || m.def.ai === 'generator') dmg *= s.stats.bigMult; // Giant Slayer
   else if (!m.alerted) dmg *= s.stats.ambushMult; // Opening Strike
   m.hp -= dmg;
@@ -162,6 +175,7 @@ export function damageMon(s: GameScene, m: Mon, dmg: number, kx: number, ky: num
       m.state = 'recover';
       m.t = 780;
       m.cd = 1100;
+      m.chain = 0;
     }
   }
   s.number(m.x, m.y - 12, dmg, 0xffffff);
@@ -181,6 +195,8 @@ function kill(s: GameScene, m: Mon): void {
   r.kills++;
   if (!G.save!.bestiary.includes(m.def.id)) G.save!.bestiary.push(m.def.id);
   if (m.parent) m.parent.children--;
+  // a brood slime bursts into two of its young
+  if (m.def.split) for (const side of [-1, 1]) summon(s, m.def.split, m.x + side * 7, m.y, null);
   const h = s.hero;
   const hurt = h ? run().heroes[run().active].hp < s.stats.maxHp * 0.4 : false;
   if (m.spawnId) {
@@ -188,7 +204,7 @@ function kill(s: GameScene, m: Mon): void {
     const [a, b] = m.def.gold;
     s.dropCoin(m.x, m.y, a + Math.floor(Math.random() * (b - a + 1)));
   }
-  if (Math.random() < (hurt ? 0.25 : 0.12)) s.dropHeart(m.x, m.y);
+  if (Math.random() < (hurt ? 0.25 : 0.12) * s.tier.hearts) s.dropHeart(m.x, m.y);
   if (bowEquipped(run().heroes[run().active]) && Math.random() < s.stats.arrowDrop) s.dropArrows(m.x, m.y);
   if (m.boss) {
     setFlag(r, 'boss:dead');
@@ -207,12 +223,14 @@ function bossBreak(s: GameScene, m: Mon): void {
   const b = m.boss!;
   b.phase++;
   run().bossPhase = b.phase;
-  m.hp = m.maxHp = CHIEF_PHASES[b.phase];
+  m.hp = m.maxHp = scaleHp(CHIEF_PHASES[b.phase], s.tier);
   b.mode = 'break';
   b.t = 1700;
   b.chargeCd = 3000;
   b.throwCd = 1500;
   b.whirlCd = 2500;
+  b.slamCd = 3500;
+  b.leapCd = 4500;
   for (const p of s.projs) if (!p.fromHero) p.life = 0;
   const h = s.hero!;
   const a = Math.atan2(h.y - m.y, h.x - m.x);
@@ -222,11 +240,10 @@ function bossBreak(s: GameScene, m: Mon): void {
   s.cameras.main.flash(200, 255, 240, 200);
   s.dropHeart(m.x + 12, m.y);
   s.dropHeart(m.x - 12, m.y);
-  if (b.phase === 1) {
-    const ar = s.def.boss.arena;
-    summon(s, 'bandit', center(ar.x0 + 2), center(ar.y0 + 2), null);
-    summon(s, 'bandit', center(ar.x0 + 2), center(ar.y1 - 2), null);
-  }
+  // his men arrive in the corners of the hall, the far side first
+  const ar = s.def.boss.arena;
+  const corners = [[ar.x0 + 2, ar.y0 + 2], [ar.x0 + 2, ar.y1 - 2], [ar.x1 - 2, ar.y0 + 2], [ar.x1 - 2, ar.y1 - 2]];
+  (s.tier.bossHelp[b.phase - 1] ?? []).forEach((type, i) => summon(s, type, center(corners[i % 4][0]), center(corners[i % 4][1]), null));
   G.hooks.onBossPhase(b.phase);
 }
 
@@ -241,11 +258,22 @@ function updateBoss(s: GameScene, m: Mon, dt: number, dist: number, toHero: numb
     b.chargeCd -= dt;
     b.throwCd -= dt;
     b.whirlCd -= dt;
+    b.slamCd -= dt;
+    b.leapCd -= dt;
   }
+  const moves = s.tier.bossMoves;
+  // a shockwave around the Chief: it bursts where he stands, or where he lands
+  const shock = (radius: number, dmg: number) => {
+    const ring = s.add.circle(m.x, m.y, radius, 0xffb060, 0.3).setStrokeStyle(2, 0xffe0a0).setDepth(DEPTH.fx).setScale(0.25);
+    s.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
+    s.cameras.main.shake(260, 0.008);
+    audio.sfx('explode');
+    if (Math.hypot(h.x - m.x, h.y - m.y) < radius + 4) s.hurtHero(dmg, m.x, m.y, { knock: 300 });
+  };
   const throwAxes = (n: number, spread: number, base: number) => {
     for (let i = 0; i < n; i++) {
       const a = base + (n === 1 ? 0 : (i / (n - 1) - 0.5) * 2 * spread);
-      s.addProj(m.x + Math.cos(a) * 10, m.y - 6 + Math.sin(a) * 10, Math.cos(a) * 118, Math.sin(a) * 118, { frame: F.Axe, dmg: 4, life: 2600, fromHero: false, spin: 12, r: 4 });
+      s.addProj(m.x + Math.cos(a) * 10, m.y - 6 + Math.sin(a) * 10, Math.cos(a) * 118, Math.sin(a) * 118, { frame: F.Axe, dmg: scaleDmg(4, s.tier), life: 2600, fromHero: false, spin: 12, r: 4 });
     }
     audio.sfx('swing');
   };
@@ -260,7 +288,17 @@ function updateBoss(s: GameScene, m: Mon, dt: number, dist: number, toHero: numb
     case 'walk':
       if (h.dead) break;
       steer(s, m, h.x, h.y, speed, dt, false, true);
-      if (dist < 28) {
+      if (moves.includes('slam') && b.slamCd <= 0 && dist < SLAM.from) {
+        b.mode = 'slamWind';
+        b.t = SLAM.wind * fast;
+        audio.sfx('bossRoar');
+      } else if (moves.includes('leap') && b.leapCd <= 0 && dist > LEAP.min && dist < LEAP.max && los) {
+        b.mode = 'leapWind';
+        b.t = LEAP.wind * fast;
+        b.tx = h.x;
+        b.ty = h.y;
+        audio.sfx('bossRoar');
+      } else if (dist < 28) {
         b.mode = 'cleaveWind';
         b.t = 520 * fast;
         b.ang = toHero;
@@ -325,6 +363,52 @@ function updateBoss(s: GameScene, m: Mon, dt: number, dist: number, toHero: numb
       }
       break;
     }
+    case 'slamWind':
+      if (b.t <= 0) {
+        shock(SLAM.r, m.def.dmg);
+        b.slamCd = SLAM.cd * fast;
+        b.mode = 'recover';
+        b.t = 800 * fast;
+      }
+      break;
+    case 'leapWind':
+      // the landing spot follows the hero until just before he jumps
+      if (b.t > LEAP.lock && !h.dead) {
+        b.tx = h.x;
+        b.ty = h.y;
+      }
+      if (b.t <= 0) {
+        // land on open ground: the spot itself, or the nearest clear one around it
+        const spots = [[0, 0], ...[6, 12, 18].flatMap((d) => [[d, 0], [-d, 0], [0, d], [0, -d], [d, d], [-d, d], [d, -d], [-d, -d]])];
+        const spot = spots.find(([ox, oy]) => !s.hits(b.tx + ox, b.ty + oy, 8, false));
+        if (!spot) {
+          b.mode = 'walk';
+          b.leapCd = 2000;
+          break;
+        }
+        b.tx += spot[0];
+        b.ty += spot[1];
+        b.sx = m.x;
+        b.sy = m.y;
+        b.mode = 'leap';
+        b.t = LEAP.air;
+        audio.sfx('dash');
+      }
+      break;
+    case 'leap': {
+      const k = 1 - Math.max(0, b.t) / LEAP.air;
+      m.x = b.sx + (b.tx - b.sx) * k;
+      m.y = b.sy + (b.ty - b.sy) * k;
+      m.kx = m.ky = 0;
+      m.face = b.tx < b.sx ? -1 : 1;
+      if (b.t <= 0) {
+        shock(LEAP.r, m.def.dmg + 1);
+        b.leapCd = LEAP.cd * fast;
+        b.mode = 'recover';
+        b.t = 750 * fast;
+      }
+      break;
+    }
     case 'throwWind':
       b.ang = toHero;
       if (b.t <= 0) {
@@ -343,10 +427,10 @@ function updateBoss(s: GameScene, m: Mon, dt: number, dist: number, toHero: numb
       }
       break;
   }
-  const wind = b.mode === 'cleaveWind' || b.mode === 'chargeWind' || b.mode === 'throwWind' || b.mode === 'whirlWind' || b.mode === 'charge';
+  const wind = b.mode === 'cleaveWind' || b.mode === 'chargeWind' || b.mode === 'throwWind' || b.mode === 'whirlWind' || b.mode === 'charge' || b.mode === 'slamWind' || b.mode === 'leapWind' || b.mode === 'leap';
   const base = enraged ? 3 : 0;
   m.spr.setFrame(wind ? base + 2 : base + (b.mode === 'walk' ? Math.floor(m.anim / 220) % 2 : 0));
-  if (b.mode !== 'charge' && Math.abs(h.x - m.x) > 3) m.face = h.x < m.x ? -1 : 1;
+  if (b.mode !== 'charge' && b.mode !== 'leap' && Math.abs(h.x - m.x) > 3) m.face = h.x < m.x ? -1 : 1;
 }
 
 export function updateMonsters(s: GameScene, dt: number): void {
@@ -363,6 +447,17 @@ export function updateMonsters(s: GameScene, dt: number): void {
     m.slowT -= dt;
     m.stunT -= dt;
     m.flashT -= dt;
+    if (m.burnT > 0) {
+      // set alight by a burning blade: a little damage every tick until it burns out
+      m.burnT -= dt;
+      m.burnTick -= dt;
+      if (m.burnTick <= 0) {
+        m.burnTick = BURN_EVERY;
+        damageMon(s, m, BURN_DMG * s.stats.dmgMult, 0, 0);
+        if (m.spr.visible) s.fx(F.Firebolt1, m.x + (Math.random() - 0.5) * 6, m.y - 8, 260);
+        if (m.dead) continue;
+      }
+    }
     const stunned = m.stunT > 0;
     if (!stunned) {
       m.cd -= dt; // the attack cooldown waits out a stun, as the state timer does
@@ -400,9 +495,9 @@ export function updateMonsters(s: GameScene, dt: number): void {
     } else if (ai === 'generator') {
       if (m.alerted) {
         m.t -= dt;
-        if (m.t <= 0 && m.children < 3) {
+        if (m.t <= 0 && m.children < s.tier.hatchMax) {
           if (summon(s, GENERATOR_SPAWN[m.def.id], m.x, m.y + TILE, m)) m.children++;
-          m.t = 5200;
+          m.t = s.tier.hatchEvery;
         }
       }
     } else if (!m.alerted) {
@@ -451,18 +546,26 @@ export function updateMonsters(s: GameScene, dt: number): void {
             s.moveBody(m, m.dirX * step, m.dirY * step, BODY, false);
             if (touch && m.hitCd <= 0 && s.hurtHero(m.def.dmg, m.x, m.y)) m.hitCd = 600;
             if (m.t <= 0) {
-              m.state = 'recover';
-              m.t = 780;
-              m.cd = 1100;
+              if (m.chain + 1 < (m.def.lunges ?? 1)) {
+                // a dire wolf gathers itself and lunges again at once
+                m.chain++;
+                m.state = 'windup';
+                m.t = 240;
+              } else {
+                m.chain = 0;
+                m.state = 'recover';
+                m.t = 780;
+                m.cd = 1100;
+              }
             }
           } else if (m.t <= 0) m.state = 'chase';
           break;
         case 'melee':
           if (m.state === 'chase') {
             steer(s, m, h.x, h.y, speed, dt, false, true);
-            if (dist < 20) {
+            if (dist < (m.def.heavy ? BRUTE.from : 20)) {
               m.state = 'windup';
-              m.t = 430;
+              m.t = m.def.heavy ? BRUTE.windup : 430;
               m.dirX = Math.cos(toHero);
               m.dirY = Math.sin(toHero);
             }
@@ -471,11 +574,12 @@ export function updateMonsters(s: GameScene, dt: number): void {
             if (m.t <= 0) {
               const a = Math.atan2(m.dirY, m.dirX);
               audio.sfx('swing');
-              const spr = s.add.image(m.x + m.dirX * 12, m.y - 3 + m.dirY * 12, 'fx', F.Slash0).setRotation(a).setTint(0xffb0a0).setDepth(DEPTH.fx);
+              const heavy = !!m.def.heavy;
+              const spr = s.add.image(m.x + m.dirX * (heavy ? 17 : 12), m.y - 3 + m.dirY * (heavy ? 17 : 12), 'fx', F.Slash0).setRotation(a).setScale(heavy ? 1.5 : 1).setTint(0xffb0a0).setDepth(DEPTH.fx);
               s.tweens.add({ targets: spr, alpha: 0, duration: 150, onComplete: () => spr.destroy() });
-              if (dist < 27 && angDiff(toHero, a) < 1.1) s.hurtHero(m.def.dmg, m.x, m.y);
+              if (dist < (heavy ? BRUTE.reach : 27) && angDiff(toHero, a) < (heavy ? BRUTE.half : 1.1)) s.hurtHero(m.def.dmg, m.x, m.y, heavy ? { knock: BRUTE.knock } : {});
               m.state = 'recover';
-              m.t = 600;
+              m.t = heavy ? BRUTE.recover : 600;
             }
           } else if (m.t <= 0) m.state = 'chase';
           break;
@@ -484,7 +588,11 @@ export function updateMonsters(s: GameScene, dt: number): void {
             windup = true;
             m.face = dx < 0 ? -1 : 1;
             if (m.t <= 0) {
-              s.addProj(m.x + Math.cos(toHero) * 8, m.y - 3 + Math.sin(toHero) * 8, Math.cos(toHero) * ARROW_SPEED, Math.sin(toHero) * ARROW_SPEED, { frame: F.EnemyArrow, dmg: m.def.dmg, life: (ARROW_REACH / ARROW_SPEED) * 1000, fromHero: false });
+              const n = m.def.volley ?? 1;
+              for (let i = 0; i < n; i++) {
+                const a = toHero + (i - (n - 1) / 2) * VOLLEY_SPREAD;
+                s.addProj(m.x + Math.cos(a) * 8, m.y - 3 + Math.sin(a) * 8, Math.cos(a) * ARROW_SPEED, Math.sin(a) * ARROW_SPEED, { frame: F.EnemyArrow, dmg: m.def.dmg, life: (ARROW_REACH / ARROW_SPEED) * 1000, fromHero: false });
+              }
               audio.sfx('shoot');
               m.cd = 1900;
               m.state = 'chase';
@@ -540,9 +648,11 @@ export function updateMonsters(s: GameScene, dt: number): void {
       if (!m.boss) spr.setFrame(Math.floor(m.anim / (ai === 'flyer' ? 110 : 230)) % 2);
       spr.setFlipX(m.face < 0);
     }
+    if (m.boss?.mode === 'leap') spr.y -= Math.sin((1 - Math.max(0, m.boss.t) / LEAP.air) * Math.PI) * 22; // in the air
     if (m.flashT > 0) spr.setTintFill(0xffffff);
     else if (stunned || m.boss?.mode === 'stun') spr.setTint(0x9a9aa8);
     else if (m.boss?.mode === 'break') spr.setTint(Math.floor(s.clock / 90) % 2 ? 0xffe08a : 0xffffff);
+    else if (m.burnT > 0) spr.setTint(0xffa860);
     else if (m.slowT > 0) spr.setTint(0x8fc8ff);
     else if (windup) spr.setTint(Math.floor(s.clock / 80) % 2 ? 0xff8a7a : 0xffffff);
     else spr.clearTint();
@@ -591,6 +701,16 @@ export function drawTelegraphs(s: GameScene): void {
       } else if (b.mode === 'whirlWind') {
         g.fillStyle(0xff3020, 0.25);
         g.fillCircle(m.x, m.y - 4, 30);
+      } else if (b.mode === 'slamWind') {
+        g.fillStyle(0xff3020, 0.25);
+        g.fillCircle(m.x, m.y, SLAM.r);
+        g.lineStyle(1, 0xff3020, 0.5);
+        g.strokeCircle(m.x, m.y, SLAM.r);
+      } else if (b.mode === 'leapWind' || b.mode === 'leap') {
+        g.fillStyle(0xff3020, b.mode === 'leap' ? 0.35 : 0.22);
+        g.fillCircle(b.tx, b.ty, LEAP.r);
+        g.lineStyle(1, 0xff3020, 0.5);
+        g.strokeCircle(b.tx, b.ty, LEAP.r);
       } else if (b.mode === 'throwWind') {
         g.lineStyle(2, 0xff3020, 0.35);
         g.lineBetween(m.x, m.y - 6, m.x + Math.cos(b.ang) * 120, m.y - 6 + Math.sin(b.ang) * 120);
@@ -608,7 +728,7 @@ export function drawTelegraphs(s: GameScene): void {
     if (m.def.ai === 'melee') {
       const a = Math.atan2(m.dirY, m.dirX);
       g.fillStyle(0xff3020, 0.28);
-      g.slice(m.x, m.y - 2, 27, a - 1.1, a + 1.1, false);
+      g.slice(m.x, m.y - 2, m.def.heavy ? BRUTE.reach : 27, a - (m.def.heavy ? BRUTE.half : 1.1), a + (m.def.heavy ? BRUTE.half : 1.1), false);
       g.fillPath();
     } else if (m.def.ai === 'lunger') {
       g.lineStyle(6, 0xff3020, 0.22);

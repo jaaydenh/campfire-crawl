@@ -481,8 +481,19 @@ function spider(top: Leg[], bottom: Leg[]): Img {
   return over(legs, ol('SpiderBody', SPIDER_BODY));
 }
 
-export function buildMonsters(): Record<'slime' | 'wolf' | 'bandit' | 'archer' | 'bat' | 'spider', Img[]> {
+// Variants met on the higher difficulty tiers: the same creatures in their own colours. The game draws some of them larger.
+const BROOD = { H: 'P', y: 'k', w: 'q', G: 'p' }; // Brood Slime: purple
+const DIRE = { '4': '2', '3': '1', '5': '3', '2': '1', '0': 'R' }; // Dire Wolf: near-black coat, red eye
+const MARKSMAN = { G: 'r', h: 'R' }; // Bandit Marksman: red hood
+const BRUTE = { '2': '1', '3': '2', B: '3', b: '2', r: 'O' }; // Bandit Brute: dark hood, steel plate, gold scarf
+const variant = (name: string, src: string, map: Record<string, string>): Img => outline(recolour(spr(name, src), map));
+
+export function buildMonsters(): Record<'slime' | 'wolf' | 'bandit' | 'archer' | 'bat' | 'spider' | 'brood' | 'dire' | 'marksman' | 'brute', Img[]> {
   return {
+    brood: [variant('Brood0', SLIME0, BROOD), variant('Brood1', SLIME1, BROOD)],
+    dire: [variant('Dire0', WOLF0, DIRE), variant('Dire1', WOLF1, DIRE)],
+    marksman: [variant('Marksman0', ARCHER, MARKSMAN), outline(recolour(stride('Marksman1', ARCHER), MARKSMAN))],
+    brute: [variant('Brute0', BANDIT, BRUTE), outline(recolour(stride('Brute1', BANDIT), BRUTE))],
     slime: [ol('Slime0', SLIME0), ol('Slime1', SLIME1)],
     wolf: [ol('Wolf0', WOLF0), ol('Wolf1', WOLF1)],
     bandit: [ol('Bandit0', BANDIT), outline(stride('Bandit1', BANDIT))],

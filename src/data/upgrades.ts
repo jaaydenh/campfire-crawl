@@ -1,4 +1,4 @@
-// Permanent upgrades, bought per hero with renown. They form four paths; an upgrade opens
+// Permanent upgrades, bought per hero with renown. Prowess is not among them: it is earned, never bought. They form four paths; an upgrade opens
 // once the one it grows from has reached the level in `needs`.
 
 export type UpgradePath = 'body' | 'arms' | 'scout' | 'trade';
@@ -45,9 +45,9 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'fortune', path: 'trade', name: 'Fortune', desc: '+15% gold found', costs: [25, 50, 90] },
   { id: 'pocket', path: 'trade', name: 'Pocket Change', desc: '+15 starting gold', more: 'Start each run with 15 more gold. It can be spent but never turns into renown.', costs: [30, 55, 85], needs: { id: 'fortune', level: 1 } },
   { id: 'haggle', path: 'trade', name: 'Haggler', desc: '-8% shop prices', costs: [40, 70, 110], needs: { id: 'fortune', level: 2 } },
-  { id: 'quarter', path: 'trade', name: 'Quartermaster', desc: '-10% kit cost', more: 'Starter kits cost 10% less renown.', costs: [35, 60, 95], needs: { id: 'fortune', level: 1 } },
-  { id: 'wider', path: 'trade', name: 'Wider Offer', desc: 'Fifth kit offer', more: 'One more item to choose from in every starter kit offer.', costs: [110], needs: { id: 'quarter', level: 2 } },
-  { id: 'look', path: 'trade', name: 'Second Look', desc: 'Kit re-roll', more: 'Once per run, swap the starter kit offer for a new draw.', costs: [130], needs: { id: 'wider', level: 1 } },
+  { id: 'quarter', path: 'trade', name: 'Quartermaster', desc: '-15% re-roll cost', more: 'Re-rolling a starter kit offer costs 15% less renown.', costs: [35, 60, 95], needs: { id: 'fortune', level: 1 } },
+  { id: 'wider', path: 'trade', name: 'Wider Offer', desc: 'Seventh kit offer', more: 'One more item, of any kind, in every starter kit offer.', costs: [110], needs: { id: 'quarter', level: 2 } },
+  { id: 'look', path: 'trade', name: 'Second Look', desc: 'Free first re-roll', more: 'The first starter kit re-roll before each run costs no renown.', costs: [130], needs: { id: 'wider', level: 1 } },
 ];
 
 export const UPGRADE: Record<string, UpgradeDef> = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));

@@ -1,7 +1,12 @@
 # Game Design Document
 
 Title: **Campfire Crawl** (project folder: `reflow`).
-Status: design approved 2026-11-24. Built so far: the hub and all of map 1 (section 12). Maps 2-8, the two full bosses and the tier system are not built.
+Status: design approved 2026-11-24. Built so far: the hub and all of map 1 (section 12). Maps 2-8 and the two full bosses are not built.
+Revised 2026-11-25: difficulty tiers per map, starter kits paid with Prowess, a fourth rarity, and
+first-time secret prizes. Built from that revision: the starter kit rework (Prowess, offers by
+role, pinned items, renown re-rolls), first-time secret prizes, and the three difficulty tiers on
+map 1 with their unlocks and rewards, each higher tier's own secrets, the legendary rarity and
+four tier-only items, four monster variants and two added boss attacks (2026-11-26).
 
 A top-down, pixel-art, classic-fantasy dungeon crawler for 1-4 players who take
 turns at one keyboard and mouse. Real-time dexterity combat, hand-designed maps
@@ -24,6 +29,7 @@ they are my proposals and the first things to change if they feel wrong.
 | Defence | No built-in dodge. Shields, dashes and blinks are equipment |
 | Classes | None. Gear makes the build; players pick a name and colour |
 | Run | One map per run (about 30-45 minutes). Beating a map unlocks the next |
+| Difficulty | Three tiers per map, chosen with the map at the hub. Clearing a tier unlocks that map's next tier |
 | Maps | Fixed layouts, puzzles and secrets; monsters, loot and some traps re-rolled per run |
 | Death | Monsters in the unfinished section respawn; everything else persists |
 | Rescue | A fallen hero's life waits where they fell; the next hero to reach the spot wins it back |
@@ -35,10 +41,10 @@ they are my proposals and the first things to change if they feel wrong.
 | Inventory | 6-space backpack; re-equip only when no monster is alerted |
 | Item gates | The main path never needs a specific item; gear opens secrets and shortcuts |
 | Fog of war | Explored areas stay drawn but dim; monsters visible only in light radius and line of sight |
-| Meta-progression | Permanent stat upgrades, item-pool unlocks, map knowledge, per-run starter kits |
+| Meta-progression | Permanent upgrades bought with renown, item-pool unlocks, map knowledge, and Prowess: a budget for each run's starter kit that grows with achievements |
 | Profiles | Per-player hero profiles inside a save file; map unlocks belong to the save |
 | Saving | 3 save files, autosave at every checkpoint and at the hub, export/import to a file |
-| Endgame | Harder tiers of every map after the final boss |
+| Endgame | Tier 3 of every map, and completing the item collection |
 | Art / audio | Original 16x16 pixel art authored in code; synthesised chiptune and effects |
 | Platform | Browser, TypeScript |
 | First delivery | Hub + all of map 1, with every core system working |
@@ -47,8 +53,9 @@ they are my proposals and the first things to change if they feel wrong.
 
 ## 2. Game loop
 
-1. **Hub.** Pick a save file, choose which heroes (1-4) join, spend meta currency
-   on permanent upgrades, buy a starter kit, choose an unlocked map and tier.
+1. **Hub.** Pick a save file, choose which heroes (1-4) join, spend renown on
+   permanent upgrades, choose an unlocked map and tier, and pick each hero's
+   starter kit with their Prowess.
 2. **Run.** The party plays that map section by section, one hero at a time.
 3. **Camp** at each checkpoint: autosave, everyone rests up to at least half
    health, trade items, visit the merchant if one is there, then hand the
@@ -186,10 +193,31 @@ or from the pause menu, so players passing the keyboard never have to change it 
 | Defensive | Shield (block toward cursor), dash boots, blink, stone skin, armour (passive) |
 | Utility | Lantern and torch (light radius, passive), keys, magnet charm (pulls gold), reveal scroll |
 
-- Rarities: common, uncommon, rare. Rare gear comes mainly from secrets, boss
-  phases and higher map tiers.
+- Rarities: common, uncommon, rare, legendary. A
+  rarer item is not the same item with bigger numbers: each step up adds a power
+  and a better look.
+- Built so far are 22 items. Four are found only on map 1's higher tiers:
+
+  | Item | Rarity | Power | Found |
+  |---|---|---|---|
+  | Emberbrand | Rare | A sword whose slashes set monsters burning for 3 seconds; it also lights braziers | Veteran secret |
+  | Berserker Charm | Rare, passive | +50% damage while at half health or less; the hero glows red | The Chief's first defeat on Veteran |
+  | Dawnbreaker | Legendary | A sword whose every slash sends a wave of light on through all monsters in its path | Legend secret |
+  | Kingsplitter | Legendary | A thrown axe that cuts through everything out and back; catching it readies the next throw | The Chief's first defeat on Legend |
+
+| Rarity | What it does | How it looks |
+|---|---|---|
+| Common | One plain action | A plain sprite |
+| Uncommon | One twist on that action: pierce, burst, knockback, a pull | An accent colour and its own swing or shot effect |
+| Rare | A second power: an effect on hit, a charged attack, or a bonus while a condition holds | An animated glint on the icon, a coloured trail, its own sound |
+| Legendary | A named, one-of-a-kind item whose signature power changes how the hero plays | A unique silhouette, an animated icon, particles in the world, a fanfare when found |
+
+- Rarer gear turns up in ordinary chests and shops at a low rate, more often on
+  higher tiers, and reliably from boss phases. Secrets are not the main source:
+  a secret pays its prize only the first time it is found (section 6).
 - What can drop is limited to the save file's **unlocked item pool**, which grows
-  as bosses are beaten and secrets are found.
+  as bosses are beaten, secrets are first found and higher tiers are cleared.
+  The target is more than 50 item types across the eight maps.
 
 ## 6. World
 
@@ -209,6 +237,85 @@ Eight maps, each starting outdoors and ending inside its dungeon.
 64 sections in total; section counts are **(default)** within your 6-10 range.
 Each section targets 3-5 minutes; boss sections run longer.
 
+### Difficulty tiers
+
+Every map has three tiers, chosen with the map at the hub: Tier 1 Adventurer,
+Tier 2 Veteran, Tier 3 Legend **(default names)**.
+
+- Clearing a map on one tier unlocks that map's next tier. Tier 1 of the next
+  map still unlocks as before.
+- The layout and puzzles are the same on every tier. Secrets are not: each tier
+  hides its own secrets in different places (see Secrets below). Higher tiers have
+  tougher monsters in larger packs, new monster variants, more traps, fewer
+  heart drops, and a boss with an added attack in each phase **(default)**.
+- **Tier 1 has no monster generators.** Where a den or nest would stand, one of
+  the monsters it hatches stands instead. Generators appear from tier 2.
+- Tier 1 of map 1 is tuned so that a brand-new party can just barely clear it
+  on its first run. Tier 2 of map N is tuned about level with tier 1 of map
+  N+2, and tier 3 with map N+4 **(default)**, so a party moves back and forth
+  between new maps and higher tiers of old ones.
+- For each tier the map screen shows what is still to be won there:
+  undiscovered items as silhouettes, unclaimed secret prizes, and Prowess not
+  yet earned.
+- What higher tiers pay is in section 8.
+
+The numbers as built **(default, to be tuned by playing)**. They are multipliers
+on the monster table, kept in one place (`src/data/tiers.ts`):
+
+| | Tier 1 Adventurer | Tier 2 Veteran | Tier 3 Legend |
+|---|---|---|---|
+| Monster and boss health | x0.8 | x1.2 | x1.5 |
+| Monster and boss damage | x0.75 | x1.25 | x1.6 |
+| Heart drops from monsters | x1.5 | x1 | x0.75 |
+| Monster generators | none | yes | yes, hatching faster and up to 4 at once |
+| Extra monsters on map 1 | none | +10 | +20, one of them a third generator |
+| Optional traps | as authored | 20 points more likely | always there, and all traps hit 1 harder |
+| Monster variants | none | Brood Slime, Dire Wolf (about 5 a run) | those, Bandit Marksman and Bandit Brute (about 16 a run) |
+| Boss's helpers | 2 bandits at the first break | and an archer | and a brute and a marksman at the second break |
+| Boss's added attacks | none | Slam | Slam and Leap |
+| Clear bonus, renown per hero | 30 | 60 | 100 |
+| Chests and shops | as before | lean rarer | lean rarer still |
+
+The game as it was before tiers sat between tier 1 and tier 2: every multiplier
+at 1, with generators and no extra monsters.
+
+Built on map 1: all of the above, tier unlocks, and the camp's "to win" line
+(Prowess not yet earned, unclaimed secret prizes, undiscovered items as
+silhouettes, the next tier, the second pin and the extra offer).
+
+Variants take the place of some of a tier's ordinary monsters, picked per run.
+Each is the monster it grows out of in its own colours, tougher, with one trick:
+
+| Variant | Replaces | Trick | Tiers |
+|---|---|---|---|
+| Brood Slime (purple, larger) | Slime | Bursts into two slimes when it dies | 2: 30% of slimes, 3: 45% |
+| Dire Wolf (black, red eye) | Wolf | Lunges twice in a row before it rests | 2: 30% of wolves, 3: 45% |
+| Bandit Marksman (red hood) | Archer | Looses three arrows in a fan | 3: 40% of archers |
+| Bandit Brute (steel plate, larger) | Bandit | A slower, wider, longer swing; barely knocked back or stunned | 3: 30% of bandits |
+
+The Chief's added attacks, each shown as a red circle before it lands:
+
+- **Slam** (tiers 2 and 3): with the hero close, he winds up and a shockwave
+  bursts around him. Step out of the circle.
+- **Leap** (tier 3): with the hero at a distance, he jumps to where the hero
+  stands and lands with a smaller shockwave. The circle follows the hero until
+  just before he jumps.
+
+Map 1's secrets by tier. A tier's secrets are sealed rock on the other tiers:
+
+| Tier | Secret | How it opens | Prize |
+|---|---|---|---|
+| 1 | The hidden grove | Bomb the cracked rock | Longsword |
+| 1 | Behind the crooked torch | Turn the odd torch | Dash Boots |
+| 1 | Across the gap | Dash over the pit | Frost Nova, and a life shrine |
+| 2 | The slab in the rock | Park the grove's stone on the plate in the trail | Emberbrand |
+| 2 | Past the far lever | Hit a lever across a pit with something thrown or shot | A rare or better item |
+| 3 | Beyond the cold brazier | Light a brazier across a pit with a fire bolt or a bomb | Dawnbreaker |
+| 3 | Behind the wolf den | Bomb the cracked rock at the back of the den's clearing | A rare or better item, and a life shrine |
+
+A "rare or better item" prize is picked from the unlocked pool for the run. Like
+every prize it is given once per save.
+
 ### Inside a section
 
 - **Scrolling:** the area is larger than the screen and the camera follows the hero.
@@ -220,8 +327,16 @@ Each section targets 3-5 minutes; boss sections run longer.
   riddle rooms (torch order, floor patterns, NPC riddles). Solved puzzles stay
   solved for the rest of the run.
 - **Secrets, off the main path:** cracked walls for bombs, gaps for a dash, dark
-  rooms for a light, hidden switches. They hold the better loot, life shrines and
-  item-pool unlocks. Nothing required is ever locked behind a specific item.
+  rooms for a light, hidden switches. The first time a secret is found on a save
+  it pays a prize: a guaranteed rare or better item or an item-pool discovery,
+  shown on a pedestal. Found again in later runs, the pedestal is empty and
+  whatever else is in the room (a chest, pots) is ordinary loot. Finding a
+  secret pays a little renown on every run. Each
+  tier has its own secrets: about as many as tier 1, hidden in different places
+  and opened in different ways, so knowing where tier 1's secrets are does not
+  give away tier 2's. Each pays its own first-time prize, and found secrets are
+  recorded per tier. Life shrines work on every run. Nothing required is ever locked behind a
+  specific item.
 - **NPCs:** rare, a few lines of dialogue each: hints, riddles, a merchant.
 
 ## 7. Economy
@@ -232,17 +347,79 @@ Each section targets 3-5 minutes; boss sections run longer.
   one-run stat charms and healing.
 - **Hearts** drop occasionally from monsters and breakables.
 - At the end of a run each hero's remaining gold converts to that hero's meta
-  currency, with bonuses for secrets found and boss phases broken. **(default)**
+  currency, renown, with bonuses for secrets found and boss phases broken, and a
+  clear bonus that grows with the tier. **(default)**
+- Renown buys permanent upgrades and starter kit re-rolls. It does not buy kit
+  items: those are paid with Prowess (section 8).
 
 ## 8. Meta-progression
 
 | What | Owned by | How |
 |---|---|---|
-| Upgrade tree: 23 permanent upgrades in four paths (see below) | Each hero | Bought at the hub with meta currency |
-| Starter kit | Each hero, per run | Before each run every hero is offered 4 random items from the unlocked pool (one is always a reusable weapon) and may buy any of them; not kept. The short sword every hero starts with is free and separate: it takes the first active slot the kit leaves empty, or the pack |
-| Item pool | Save file | Grows from boss kills and secrets |
-| Map knowledge: found secrets, open shortcuts, bestiary | Save file | Recorded on discovery; shortcuts stay open in later runs |
-| Map and tier unlocks | Save file | Beat a map to unlock the next; beat map 8 to unlock tiers |
+| Upgrade tree: 23 permanent upgrades in four paths (see below) | Each hero | Bought at the hub with renown |
+| Prowess | Each hero | Earned by first-time achievements, never bought. Full again before every run |
+| Starter kit | Each hero, per run | Chosen from six offered items plus the hero's pinned item and paid with Prowess (see below); not kept |
+| Item pool | Save file | Grows from boss kills, first-time secret prizes and tier discoveries |
+| Map knowledge: found secrets (per tier), open shortcuts, bestiary | Save file | Recorded on discovery; shortcuts stay open in later runs on every tier |
+| Map and tier unlocks | Save file | Beat a map to unlock the next map and that map's next tier |
+
+### Prowess and the starter kit
+
+Prowess measures what a hero has achieved. It is a budget, not a purse: it is
+full before every run, it pays for that run's starter kit, and whatever is not
+used is simply left over. Renown is for the upgrade tree, so a kit never
+competes with a permanent upgrade.
+
+- **Starting Prowess:** 3 **(default)**, enough for one uncommon item or two
+  cheap commons.
+- **Earning more:** +1 each, once per hero, for the heroes in the party when it
+  happens. That is 43 at most. Achievements are the only source.
+  - Reaching the halfway campfire of a map for the first time (8 in all).
+  - Clearing a map on a tier for the first time (24).
+  - Finishing a map without that hero dying (8).
+- **Item prices** go by rarity **(default)**: common 1-2, uncommon 3-4, rare
+  5-7, legendary 8-10. A hero who discovers a strong item early can still find
+  it in chests and shops, but cannot start a run with it until their Prowess
+  reaches its price.
+
+**The offer.** Before each run every hero is offered six items from the unlocked
+pool, drawn by role so that every slot can be filled:
+
+| Offers | Role |
+|---|---|
+| 2 | Reusable weapons |
+| 2 | Other active items: defence, tools, limited-use |
+| 2 | Passives |
+
+- The hero takes up to three active items and one passive, within their Prowess.
+- **Pinned item:** each hero pins one item from the pool as their signature. It
+  is always available on top of the six offers, at its normal price. The pin can
+  be changed at the hub between runs.
+- **New discoveries:** an item discovered in the last run is guaranteed a place
+  in every hero's next offer and is marked as new.
+- **Re-rolls:** any hero may redraw their six offers for renown: 10, then 20,
+  then 40, doubling each time and starting again at 10 after the run
+  **(default prices)**. The pinned item is not redrawn.
+- The offer depends only on the save, the run number, the hero and the number
+  of re-rolls, so reloading cannot change it.
+- The short sword every hero starts with is free and separate: it takes the
+  first active slot the kit leaves empty, or the pack.
+
+### Tier rewards
+
+The reward for a harder tier is a larger pool of better items to start runs
+with, and the Prowess to afford them.
+
+| Reward | Detail |
+|---|---|
+| Item discoveries | Tiers 2 and 3 of each map each hold 1-2 items found nowhere else, mostly rare and legendary **(default)**. They come from the boss's first defeat on that tier and from that tier's first-time secret prizes. Once discovered, an item joins the save's pool for kits, chests and shops on every map and tier |
+| Prowess | +1 for each first clear, as above |
+| Kit power | The first tier 2 clear of any map gives every hero on the save a second pinned item; the first tier 3 clear adds one more offer **(default)** |
+| In-run loot | Chests and shops lean toward rarer items on higher tiers, and the clear bonus is larger |
+
+Built: all of it. On map 1 each higher tier holds two items found nowhere
+else, one on a secret's pedestal and one from the Chief's first defeat there.
+Legendary items cost 8 Prowess, the most a hero can reach with one map built.
 
 ### Upgrade tree
 
@@ -273,17 +450,20 @@ says.
 | Trade | Fortune | 3 | +15% gold found | start |
 | | Pocket Change | 3 | Start each run with +15 gold (never converts to renown) | Fortune 1 |
 | | Haggler | 3 | -8% merchant prices | Fortune 2 |
-| | Quartermaster | 3 | -10% starter kit cost | Fortune 1 |
-| | Wider Offer | 1 | A fifth starter kit offer | Quartermaster 2 |
-| | Second Look | 1 | One re-roll of the starter kit offer per run | Wider Offer 1 |
+| | Quartermaster | 3 | -15% starter kit re-roll cost **(default)** | Fortune 1 |
+| | Wider Offer | 1 | A seventh starter kit offer, of any role | Quartermaster 2 |
+| | Second Look | 1 | The first starter kit re-roll before each run is free | Wider Offer 1 |
 
 Deliberately left out of the tree: more healing at campfires than the rest every
-party gets, bonus renown, a death-saving upgrade and a bigger backpack.
+party gets, bonus renown, a death-saving upgrade, a bigger backpack, and
+Prowess, which is earned and never bought.
 
-Difficulty target: a brand-new party with only its short swords should usually
-run out of lives around the middle of map 1, and clear it on the second or third run. Map N is
-tuned for heroes carrying roughly N-1 maps' worth of upgrades, so map 2 is
-close to impossible on a first run.
+Difficulty target: a brand-new party, each hero with a short sword and a
+3-Prowess starter kit, should just barely clear tier 1 of map 1 on its first
+run. (Before tiers the target was to run out of lives around the middle and
+clear on the second or third run; that level now sits between tiers 1 and 2.)
+Tier 1 of map N is tuned for heroes carrying roughly N-1 maps' worth of
+upgrades, so map 2 is close to impossible on a first run.
 
 ## 9. Saving
 
@@ -323,9 +503,32 @@ close to impossible on a first run.
 - Three music tracks (hub, map, boss) and core sound effects.
 
 Maps 2-8, the two full bosses and the tier system follow once map 1 feels right.
+Of the 2026-11-25 revision, the starter kit rework (Prowess, offers by role,
+one pinned item, re-rolls) is built on map 1. Prowess for the halfway campfire
+is awarded when the run ends, not at the campfire itself. First-time secret
+prizes are built too: the item on a secret's pedestal is won once per save,
+and the pedestal stands empty on later runs. The three difficulty tiers are
+built on map 1 too, with the second pinned item, the tier 3 extra offer, each
+higher tier's own secrets, and four tier-only items.
 
 ## 13. Still open
 
 - Story and tone beyond "classic fantasy": how much text, who the dark lord is.
 - Exact numbers: HP, damage, prices, upgrade costs. These will be tuned by
   playing the vertical slice.
+- Prowess: the name, the starting amount, what earns it and each item's price.
+  New heroes now start every run with a kit, so map 1 may need retuning to keep
+  the difficulty target.
+- Tiers: the names, the numbers in the table in section 6 (tier 1 has not yet
+  been checked against a real first run), and which items each tier of each
+  map holds.
+- Secret placement per tier: every map needs three sets of secrets. Map 1 has
+  all three (3, 2 and 2 secrets); a map is built once per tier, so anything can
+  differ between tiers.
+- The four tier-only items: their numbers, and whether the hints for the
+  higher tiers' secrets are enough (there are no signs or NPC lines for them).
+- Variants and the Chief's added attacks: their numbers, and whether the Chief
+  should gain a different attack in each phase instead of the same ones throughout.
+- Old saves: Quartermaster levels already bought change meaning, from a kit
+  discount to a re-roll discount. Nothing is refunded as built; decide whether
+  it should be.

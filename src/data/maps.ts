@@ -1,12 +1,13 @@
 import type { MapDef } from '../world/mapdef';
 import { buildMap1 } from './map1';
+import { tierDef } from './tiers';
 
 export interface MapInfo {
   id: string;
   number: number;
   name: string;
   blurb: string;
-  build?: () => MapDef; // undefined until the map is made
+  build?: (tier: number) => MapDef; // undefined until the map is made
 }
 
 export const MAPS: MapInfo[] = [
@@ -21,13 +22,18 @@ export const MAPS: MapInfo[] = [
 ];
 
 const cache = new Map<string, MapDef>();
-export function getMap(id: string): MapDef {
-  let m = cache.get(id);
+/**
+ * A map as it is on a difficulty tier. The layout, puzzles and shared monsters are the same on every tier;
+ * the secrets, their prizes and the items a first clear unlocks belong to the tier.
+ */
+export function getMap(id: string, tier: number | undefined = 1): MapDef {
+  const t = tierDef(tier).tier;
+  let m = cache.get(`${id}:${t}`);
   if (!m) {
     const info = MAPS.find((x) => x.id === id);
     if (!info?.build) throw new Error(`Map ${id} is not available`);
-    m = info.build();
-    cache.set(id, m);
+    m = info.build(t);
+    cache.set(`${id}:${t}`, m);
   }
   return m;
 }

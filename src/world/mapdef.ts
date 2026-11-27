@@ -46,7 +46,8 @@ export interface MapObject {
   phase?: number; // traps, 0..1
   chance?: number; // traps: probability the trap exists in a given run
   dir?: number; // arrowtrap: 0 down, 1 left, 2 up, 3 right
-  item?: string; // pedestal
+  item?: string; // pedestal: the item it holds
+  prize?: boolean; // pedestal without `item`: holds a rare or better item from the pool, picked per run
   secret?: string; // pedestal / secret zone
   w?: number; // secret zone size in tiles
   h?: number;
@@ -60,10 +61,14 @@ export interface MonsterSpawn {
   y: number;
   section: number;
   options: string[]; // one is chosen per run
+  /** The lowest difficulty tier this monster appears on. Missing means every tier. */
+  minTier?: number;
 }
 
 export interface MapDef {
   id: string;
+  /** The difficulty tier this build of the map is for. */
+  tier: number;
   number: number;
   name: string;
   w: number;
@@ -75,8 +80,9 @@ export interface MapDef {
   checkpoints: { x: number; y: number }[];
   sectionNames: string[];
   boss: { type: string; x: number; y: number; arena: { x0: number; y0: number; x1: number; y1: number }; gate: string };
+  /** This tier's secrets. Ids are unique across the tiers of a map, so what a save has found is recorded per tier. */
   secrets: { id: string; name: string }[];
-  /** Items added to the pool the first time the map is cleared. */
+  /** Items added to the pool the first time the map is cleared on this tier. */
   clearUnlocks: string[];
 }
 
@@ -96,6 +102,7 @@ export class MapBuilder {
   checkpoints: { x: number; y: number }[] = [];
   private sec = 0;
   private n = 0;
+  private extras = 0;
   private rng: Rng;
 
   constructor(
@@ -182,7 +189,15 @@ export class MapBuilder {
   }
 
   spawn(x: number, y: number, ...options: string[]): void {
-    this.spawns.push({ id: `m${this.spawns.length}`, x, y, section: this.sec, options });
+    this.spawns.push({ id: `m${this.spawns.length - this.extras}`, x, y, section: this.sec, options });
+  }
+
+  /**
+   * A monster that is only there from a difficulty tier upward. It has its own id series, so adding one
+   * never renumbers the monsters every tier shares.
+   */
+  extra(minTier: number, x: number, y: number, ...options: string[]): void {
+    this.spawns.push({ id: `x${this.extras++}`, x, y, section: this.sec, options, minTier });
   }
 
   /** Places a campfire and records where heroes appear beside it. */

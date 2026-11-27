@@ -42,10 +42,11 @@ function reach(m: MapDef, from: { x: number; y: number }, open: (o: MapObject) =
 const near = (m: MapDef, seen: Uint8Array, x: number, y: number) =>
   [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen[(y + dy) * m.w + x + dx]);
 
-for (const info of MAPS) {
+for (const info of MAPS)
+  for (const tier of [1, 2, 3]) {
   if (!info.build) continue;
-  const m = info.build();
-  console.log(`${info.name}: ${m.w}x${m.h}, ${m.objects.length} objects, ${m.spawns.length} monster spawns, ${m.checkpoints.length - 1} campfires`);
+  const m = info.build(tier);
+  console.log(`${info.name}, tier ${tier}: ${m.w}x${m.h}, ${m.objects.length} objects, ${m.spawns.length} monster spawns, ${m.checkpoints.length - 1} campfires`);
 
   // 1. Everything stands on sensible ground.
   for (const o of m.objects) {
