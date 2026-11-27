@@ -22,8 +22,8 @@ export interface MonsterDef {
   heavy?: boolean; // melee: a slower, wider, longer swing, and hard to stagger
   // Map 2:
   frame?: O; // generator: its frame on the objects sheet
-  swims?: boolean; // shallow mire does not slow it
-  land?: number; // swimmer: speed multiplier out of the water
+  swims?: boolean; // shallow mire does not slow it, and rising water does not sweep it away. It still cannot cross deep water: nothing on foot can
+  land?: number; // swimmer: speed multiplier on dry ground
   poison?: number; // ms of poison its hit leaves on the hero
   slows?: boolean; // its hit leaves the hero slowed
   thrust?: { from: number; reach: number; half: number; windup: number; recover: number; combo?: number }; // melee: a long, narrow spear thrust, `combo` in a row
@@ -33,6 +33,10 @@ export interface MonsterDef {
   cloud?: number; // leaves a poison cloud this many ms long where it dies
   sparks?: number; // wisp: sparks thrown outward by its burst
 }
+
+/** HP of each boss phase. A boss's entry in the table below starts with the first. */
+export const CHIEF_PHASES = [50, 55, 65];
+export const PRIEST_PHASES = [48, 56, 66];
 
 const defs: MonsterDef[] = [
   { id: 'slime', name: 'Slime', desc: 'Hops at you. Harmless alone, a nuisance in groups.', sheet: 'slime', ai: 'hopper', hp: 6, dmg: 3, speed: 34, aggro: 6, radius: 5, gold: [1, 3] },
@@ -62,16 +66,14 @@ const defs: MonsterDef[] = [
   { id: 'nest', name: 'Spider Nest', desc: 'Hatches spiders until it is destroyed.', sheet: 'objects', ai: 'generator', hp: 28, dmg: 0, speed: 0, aggro: 9, radius: 7, gold: [8, 12], frame: O.Nest },
   { id: 'clutch', name: 'Leech Clutch', desc: 'A rotten log full of eggs. Leeches keep hatching until it is destroyed.', sheet: 'objects', ai: 'generator', hp: 30, dmg: 0, speed: 0, aggro: 9, radius: 7, gold: [9, 13], frame: O.Clutch },
   { id: 'coffin', name: 'Sunken Coffin', desc: 'The drowned keep climbing out of it until it is destroyed.', sheet: 'objects', ai: 'generator', hp: 34, dmg: 0, speed: 0, aggro: 9, radius: 7, gold: [10, 14], frame: O.Coffin },
-  { id: 'chief', name: 'The Bandit Chief', desc: 'Lord of the cave. Cleaves, charges and hurls axes.', sheet: 'chief', ai: 'boss', hp: 50, dmg: 6, speed: 40, aggro: 30, radius: 10, gold: [40, 40] },
-  { id: 'priest', name: 'The Drowned Priest', desc: 'Keeper of the sunken temple. Hurls water, calls geysers and floods his own sanctum: keep to dry ground.', sheet: 'priest', ai: 'boss', hp: 48, dmg: 6, speed: 26, aggro: 30, radius: 9, gold: [50, 50] },
+  { id: 'chief', name: 'The Bandit Chief', desc: 'Lord of the cave. Cleaves, charges and hurls axes.', sheet: 'chief', ai: 'boss', hp: CHIEF_PHASES[0], dmg: 6, speed: 40, aggro: 30, radius: 10, gold: [40, 40] },
+  { id: 'priest', name: 'The Drowned Priest', desc: 'Keeper of the sunken temple. Hurls water, calls geysers and floods his own sanctum: keep to dry ground.', sheet: 'priest', ai: 'boss', hp: PRIEST_PHASES[0], dmg: 6, speed: 26, aggro: 30, radius: 9, gold: [50, 50] },
 ];
 
 export const MONSTERS: Record<string, MonsterDef> = Object.fromEntries(defs.map((d) => [d.id, d]));
 /** What each generator hatches. */
 export const GENERATOR_SPAWN: Record<string, string> = { den: 'wolf', nest: 'spider', clutch: 'leech', coffin: 'drowned' };
-/** HP of each boss phase. */
-export const CHIEF_PHASES = [50, 55, 65];
-export const BOSS_PHASES: Record<string, number[]> = { chief: CHIEF_PHASES, priest: [48, 56, 66] };
+export const BOSS_PHASES: Record<string, number[]> = { chief: CHIEF_PHASES, priest: PRIEST_PHASES };
 /** What the party is told when a boss's guard breaks: the first break, then the second. */
 export const BOSS_LINES: Record<string, { short: string; breaks: string[]; help: string; beaten: string; ahead: string }> = {
   chief: { short: 'The Chief', breaks: ["The Chief's guard is broken", 'The Chief is enraged! His guard is broken again'], help: 'He calls for help!', beaten: 'The Bandit Chief is beaten.', ahead: "The Chief's hall lies ahead." },

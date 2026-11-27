@@ -921,6 +921,17 @@ assert.equal(leadAngle(100, 0, 0, 0, 200), 0, 'a still target is shot at directl
 assert.ok(Math.abs(leadAngle(100, 0, 0, 40, 200) - Math.atan2(20, 100)) < 1e-9, 'a moving one is led by its travel during the flight');
 assert.ok(Math.abs(leadAngle(1000, 0, 0, 40, 200) - Math.atan2(20, 1000)) < 1e-9, 'the lead never looks more than half a second ahead');
 
+// Map 1 is laid out from a fixed seed, and a save holds what a party has explored of it tile by tile.
+// Its layout must never change by accident: adding to the map builder has shifted the seeded stream before.
+{
+  const fnv = (bytes: Uint8Array) => {
+    let h = 2166136261 >>> 0;
+    for (const b of bytes) h = Math.imul(h ^ b, 16777619) >>> 0;
+    return h;
+  };
+  assert.deepEqual([1, 2, 3].map((t) => fnv(getMap('map1', t).tiles)), [3723198810, 3283878474, 1816260717], "map 1's tiles are as they were on each tier");
+}
+
 // ---------------------------------------------------------------- map 2: the Drowned Mire
 
 {
@@ -1017,7 +1028,10 @@ assert.ok(Math.abs(leadAngle(1000, 0, 0, 40, 200) - Math.atan2(20, 1000)) < 1e-9
   assert.ok(w2.floodArena(0).length > 0 && !w2.bog(5, 94));
 
   // a hidden wall in the temple opens to flagstones, and one in the swamp's rock to cave floor
-  const w3 = new World(d2, createRun(s, [0], 'map2', 1), s);
+  s.knowledge.map2 = { secrets: [], prizes: [], shortcuts: [], bestCheckpoint: 0, clears: 1, tierClears: [1, 0, 0] }; // tier 2 is open
+  const r2 = createRun(s, [0], 'map2', 2);
+  assert.equal(r2.tier, 2);
+  const w3 = new World(d2, r2, s);
   const idol = w3.objs.find((o) => o.def.type === 'hidden' && o.def.puzzle === 'idol')!;
   assert.ok(wallKind(w3.hiddenTile(idol, false)) === MASONRY && w3.hiddenTile(idol, true) === T.TempleFloor);
   const shore = w3.objs.find((o) => o.def.type === 'hidden' && o.def.puzzle === 'farshore')!;

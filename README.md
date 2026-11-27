@@ -37,7 +37,7 @@ move to J and K.
 - `src/world/mapdef.ts` - the map format and the builder maps are authored with.
 - `src/game/` - the world scene, monster behaviour (`priest.ts` is map 2's boss) and puzzle state.
 - `src/ui/` - menus and HUD (plain DOM over the canvas).
-- `src/art/`, `src/audio/` - pixel art and sound, all generated in code. `art/mire.ts` holds map 2's art.
+- `src/art/`, `src/audio/` - pixel art and sound, all generated in code. `src/art/mire.ts` holds map 2's art.
 - `src/run.ts`, `src/save.ts` - run rules and save files.
 
 ## Checks

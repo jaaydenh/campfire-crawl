@@ -29,7 +29,7 @@ export function priestBreak(s: GameScene, m: Mon): void {
   s.applyTiles(s.world.floodArena(b.phase)); // the water comes up
 }
 
-/** The flooded tiles of the sanctum, as pixel rectangles. */
+/** The flooded tiles of the sanctum, as tile indexes. */
 function floodedTiles(s: GameScene): number[] {
   return (s.def.boss.flood ?? []).slice(0, s.world.flooded).flat();
 }

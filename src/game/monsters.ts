@@ -546,8 +546,9 @@ export function updateMonsters(s: GameScene, dt: number): void {
     }
     const slow = m.slowT > 0 ? 0.3 : 1;
     const inBog = w.bog(tx(m.x), tx(m.y));
-    // mire drags at whatever cannot swim; a leech is only quick in the water
-    const speed = m.def.speed * slow * (inBog && !fly && !m.def.swims ? BOG_DRAG : 1) * (!inBog && m.def.land ? m.def.land : 1);
+    // mire drags at whatever cannot swim; a leech is only quick in the water, and slow on dry ground
+    const dry = !inBog && !w.deep(tx(m.x), tx(m.y));
+    const speed = m.def.speed * slow * (inBog && !fly && !m.def.swims ? BOG_DRAG : 1) * (dry && m.def.land ? m.def.land : 1);
     let mending = false;
     const touch = dist < m.r + 5;
     let windup = false;

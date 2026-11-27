@@ -177,9 +177,10 @@ export class MapBuilder {
     this.tiles = new Uint8Array(w * h);
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
+        // Only trees draw from the seeded stream: walls of rock and masonry must not, or every layout
+        // built after them (map 1's included) would shift.
         const z = this.zone(x, y);
-        const alt = this.rng.chance(0.3);
-        this.tiles[y * w + x] = z === 'cave' ? T.CaveWall : z === 'temple' ? T.TempleWall : z === 'swamp' ? (alt ? T.MireTree2 : T.MireTree) : alt ? T.Tree2 : T.Tree;
+        this.tiles[y * w + x] = z === 'cave' ? T.CaveWall : z === 'temple' ? T.TempleWall : z === 'swamp' ? (this.rng.chance(0.3) ? T.MireTree2 : T.MireTree) : this.rng.chance(0.3) ? T.Tree2 : T.Tree;
       }
   }
 

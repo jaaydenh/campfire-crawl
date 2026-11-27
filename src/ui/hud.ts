@@ -91,7 +91,8 @@ export function hudFrame(): void {
     set('hp', `${poisoned ? ico(IC.PoisonUI, 'sm') : ''}${Math.max(0, Math.ceil(rh.hp))}${bonus > 0 ? ` <b class="bonus">+${bonus}</b>` : ''} / ${st.maxHp}`);
     style('hpbonus', 'width', `${Math.max(0, Math.min(100, (bonus / st.maxHp) * 100)).toFixed(0)}%`);
     style('hpfill', 'width', `${Math.max(0, Math.min(100, (rh.hp / st.maxHp) * 100)).toFixed(0)}%`);
-    style('hpfill', 'background', poisoned ? '#9a5fd0' : rh.hp / st.maxHp < 0.3 ? '#e0483a' : '#5fc24f');
+    // low health keeps its red warning even while poisoned: the poison mark beside the number still shows
+    style('hpfill', 'background', rh.hp / st.maxHp < 0.3 ? '#e0483a' : poisoned ? '#9a5fd0' : '#5fc24f');
   }
   set('gold', String(rh.gold));
   set('keys', r.keys.map((k) => ico(k === 'blue' ? IC.KeyBlueUI : IC.KeyRedUI, 'sm')).join(''));

@@ -197,8 +197,9 @@ or from the pause menu, so players passing the keyboard never have to change it 
 - Rarities: common, uncommon, rare, legendary. A
   rarer item is not the same item with bigger numbers: each step up adds a power
   and a better look.
-- Built so far are 30 items: 22 from map 1 and 8 found in the Drowned Mire (listed under "Map 2"
-  in section 6). Four are found only on map 1's higher tiers:
+- Built so far are 30 items: 22 from map 1 and 8 new ones found in the Drowned Mire (listed under
+  "Map 2" in section 6). That list has a ninth row, Fire Bolt: it is one of the 22, but until map 2
+  it could not be found anywhere. Four are found only on map 1's higher tiers:
 
   | Item | Rarity | Power | Found |
   |---|---|---|---|
@@ -338,8 +339,8 @@ asks. Map 1's are x1.
 | Rotten planks, cracked slabs | Hold for 0.6 s after the hero steps on them, then fall away for 4.5 s and come back. A hero caught on one takes trap damage and is put back on the last sound footing. Cross without stopping |
 | Sluice wheels | Each turn of a wheel takes its water channel from high to low or back. At high water a channel is deep and its stone rafts can be walked on; at low water the channel is wet floor and the rafts lie at the bottom of their shafts. The water starts every turn where the map sets it, so a party can never be stranded |
 | Gas vents | Breathe out a cloud for about a third of their cycle. Standing in it poisons |
-| Poison | 1 damage a second for a few seconds, through armour and the moment of safety after a hit. More poison makes it last longer, not hurt more. A heart clears it; so does the end of the turn. The HP bar turns purple |
-| Anything on foot standing where a floor falls or the water rises | Is lost. What swims stays in the water |
+| Poison | 1 damage a second for a few seconds, through armour and the moment of safety after a hit. More poison makes it last longer, not hurt more. A heart clears it; so does the end of the turn. The HP bar shows a poison mark and turns purple (it stays red when health is low) |
+| Anything on foot standing where a floor falls or the water rises | Is lost. What swims (leeches, lizardfolk, the drowned, toads) is not swept away by rising water, but cannot move through deep water either: it waits there until the water drops |
 
 **Sections.**
 
