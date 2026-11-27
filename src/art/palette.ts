@@ -47,6 +47,23 @@ export const PALETTE_HEX: Record<string, string> = {
   v: '#413846', // cave floor shade
   V: '#4f4553', // cave floor base
   x: '#5d5261', // cave floor light
+  // map 2: swamp
+  M: '#3d3a28', // mud
+  N: '#2f2c20', // mud shade
+  L: '#514c30', // mud light
+  W: '#3c5c3e', // shallow mire
+  X: '#2e4a34', // mire shade
+  Z: '#5c8048', // scum, lily pads, ripples
+  Q: '#132528', // deep swamp water
+  i: '#1d373a', // deep water ripple
+  // map 2: temple
+  F: '#56645b', // flagstone
+  f: '#465149', // flagstone shade
+  I: '#69786c', // flagstone light
+  C: '#232e2b', // temple wall top
+  A: '#8a9a8a', // dressed stone highlight
+  J: '#1c4652', // flood water
+  l: '#2e6876', // flood water light
 };
 
 export type Rgba = readonly [number, number, number, number];

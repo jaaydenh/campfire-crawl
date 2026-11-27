@@ -4,8 +4,11 @@ import { seeded } from '../rng';
 import type { MonsterSpawn } from '../world/mapdef';
 import { GENERATOR_SPAWN, MONSTERS, type MonsterDef } from './monsters';
 
-/** slam: a shockwave around him. leap: he jumps to where the hero stands and lands with one. */
-export type BossMove = 'slam' | 'leap';
+/**
+ * The Chief. slam: a shockwave around him. leap: he jumps to where the hero stands and lands with one.
+ * The Drowned Priest. pool: a whirlpool that drags the hero in. wave: a wall of water with one gap crosses the sanctum.
+ */
+export type BossMove = 'slam' | 'leap' | 'pool' | 'wave';
 
 export interface TierDef {
   tier: number; // 1-based
@@ -20,10 +23,10 @@ export interface TierDef {
   hatchMax: number; // hatchlings one generator keeps alive at once
   trapDmg: number; // added to spike and arrow trap damage
   trapChance: number; // added to the chance that an optional trap is there in a run
-  /** Who the boss calls in when each phase breaks: one list per break. */
-  bossHelp: string[][];
-  /** Attacks the boss has on this tier on top of his usual ones. */
-  bossMoves: BossMove[];
+  /** Who each boss calls in when each phase breaks: one list per break. */
+  bossHelp: Record<string, string[][]>;
+  /** Attacks each boss has on this tier on top of his usual ones. */
+  bossMoves: Record<string, BossMove[]>;
   /** Variants met on this tier: for a monster, the variant that may stand in its place and how often (0 to 1). */
   variants: Record<string, [string, number]>;
   clearBonus: number; // renown each hero earns for clearing the map
@@ -34,9 +37,9 @@ export interface TierDef {
  * Tier 2 is about level with tier 1 of the map two further on, and tier 3 with the map four further on.
  */
 export const TIERS: TierDef[] = [
-  { tier: 1, name: 'Adventurer', blurb: 'Weaker monsters, more hearts, no dens or nests.', hp: 0.8, dmg: 0.75, hearts: 1.5, generators: false, hatchEvery: 5200, hatchMax: 3, trapDmg: 0, trapChance: 0, bossHelp: [['bandit', 'bandit'], []], bossMoves: [], variants: {}, clearBonus: 30 },
-  { tier: 2, name: 'Veteran', blurb: 'Tougher monsters in larger packs, new kinds among them, dens and nests.', hp: 1.2, dmg: 1.25, hearts: 1, generators: true, hatchEvery: 5200, hatchMax: 3, trapDmg: 0, trapChance: 0.2, bossHelp: [['bandit', 'bandit', 'archer'], []], bossMoves: ['slam'], variants: { slime: ['brood', 0.3], wolf: ['dire', 0.3] }, clearBonus: 60 },
-  { tier: 3, name: 'Legend', blurb: 'Deadly monsters and more new kinds, every trap armed, few hearts.', hp: 1.5, dmg: 1.6, hearts: 0.75, generators: true, hatchEvery: 4200, hatchMax: 4, trapDmg: 1, trapChance: 1, bossHelp: [['bandit', 'bandit', 'archer'], ['brute', 'marksman']], bossMoves: ['slam', 'leap'], variants: { slime: ['brood', 0.45], wolf: ['dire', 0.45], archer: ['marksman', 0.4], bandit: ['brute', 0.3] }, clearBonus: 100 },
+  { tier: 1, name: 'Adventurer', blurb: 'Weaker monsters, more hearts, no dens or nests.', hp: 0.8, dmg: 0.75, hearts: 1.5, generators: false, hatchEvery: 5200, hatchMax: 3, trapDmg: 0, trapChance: 0, bossHelp: { chief: [['bandit', 'bandit'], []], priest: [['drowned', 'drowned'], []] }, bossMoves: { chief: [], priest: [] }, variants: {}, clearBonus: 30 },
+  { tier: 2, name: 'Veteran', blurb: 'Tougher monsters in larger packs, new kinds among them, dens and nests.', hp: 1.2, dmg: 1.25, hearts: 1, generators: true, hatchEvery: 5200, hatchMax: 3, trapDmg: 0, trapChance: 0.2, bossHelp: { chief: [['bandit', 'bandit', 'archer'], []], priest: [['drowned', 'drowned', 'shaman'], []] }, bossMoves: { chief: ['slam'], priest: ['pool'] }, variants: { slime: ['brood', 0.3], wolf: ['dire', 0.3], toad: ['bloat', 0.3], wisp: ['gravelight', 0.3] }, clearBonus: 60 },
+  { tier: 3, name: 'Legend', blurb: 'Deadly monsters and more new kinds, every trap armed, few hearts.', hp: 1.5, dmg: 1.6, hearts: 0.75, generators: true, hatchEvery: 4200, hatchMax: 4, trapDmg: 1, trapChance: 1, bossHelp: { chief: [['bandit', 'bandit', 'archer'], ['brute', 'marksman']], priest: [['drowned', 'drowned', 'shaman'], ['stalker', 'witch']] }, bossMoves: { chief: ['slam', 'leap'], priest: ['pool', 'wave'] }, variants: { slime: ['brood', 0.45], wolf: ['dire', 0.45], archer: ['marksman', 0.4], bandit: ['brute', 0.3], toad: ['bloat', 0.45], wisp: ['gravelight', 0.45], lizard: ['stalker', 0.35], shaman: ['witch', 0.4] }, clearBonus: 100 },
 ];
 
 export const TIER_COUNT = TIERS.length;
@@ -48,10 +51,15 @@ export const scaleHp = (hp: number, t: TierDef): number => Math.max(1, Math.roun
 /** Damage never drops below 1; something harmless stays harmless. */
 export const scaleDmg = (dmg: number, t: TierDef): number => (dmg > 0 ? Math.max(1, Math.round(dmg * t.dmg)) : 0);
 
+/** A tier as it plays on a map whose monsters are tougher than the table says: the same tier with the map's multipliers folded in. */
+export function tierOnMap(t: TierDef, scale: { hp: number; dmg: number }): TierDef {
+  return scale.hp === 1 && scale.dmg === 1 ? t : { ...t, hp: t.hp * scale.hp, dmg: t.dmg * scale.dmg };
+}
+
 const scaled = new Map<string, MonsterDef>();
 /** A monster as it is on a tier: the same creature with that tier's health and damage. */
 export function tierMonster(def: MonsterDef, t: TierDef): MonsterDef {
-  const key = `${def.id}:${t.tier}`;
+  const key = `${def.id}:${t.hp}:${t.dmg}`;
   let m = scaled.get(key);
   if (!m) {
     m = { ...def, hp: scaleHp(def.hp, t), dmg: scaleDmg(def.dmg, t) };

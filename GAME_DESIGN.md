@@ -1,12 +1,13 @@
 # Game Design Document
 
 Title: **Campfire Crawl** (project folder: `reflow`).
-Status: design approved 2026-11-24. Built so far: the hub and all of map 1 (section 12). Maps 2-8 and the two full bosses are not built.
+Status: design approved 2026-11-24. Built so far: the hub, all of map 1 (section 12) and all of map 2 (section 6, "Map 2"). Maps 3-8 and the two full bosses are not built.
 Revised 2026-11-25: difficulty tiers per map, starter kits paid with Prowess, a fourth rarity, and
 first-time secret prizes. Built from that revision: the starter kit rework (Prowess, offers by
 role, pinned items, renown re-rolls), first-time secret prizes, and the three difficulty tiers on
 map 1 with their unlocks and rewards, each higher tier's own secrets, the legendary rarity and
 four tier-only items, four monster variants and two added boss attacks (2026-11-26).
+Map 2, the Drowned Mire, was built on 2026-11-27 on all three tiers: see "Map 2" in section 6.
 
 A top-down, pixel-art, classic-fantasy dungeon crawler for 1-4 players who take
 turns at one keyboard and mouse. Real-time dexterity combat, hand-designed maps
@@ -196,7 +197,8 @@ or from the pause menu, so players passing the keyboard never have to change it 
 - Rarities: common, uncommon, rare, legendary. A
   rarer item is not the same item with bigger numbers: each step up adds a power
   and a better look.
-- Built so far are 22 items. Four are found only on map 1's higher tiers:
+- Built so far are 30 items: 22 from map 1 and 8 found in the Drowned Mire (listed under "Map 2"
+  in section 6). Four are found only on map 1's higher tiers:
 
   | Item | Rarity | Power | Found |
   |---|---|---|---|
@@ -315,6 +317,111 @@ Map 1's secrets by tier. A tier's secrets are sealed rock on the other tiers:
 
 A "rare or better item" prize is picked from the unlocked pool for the run. Like
 every prize it is given once per save.
+
+### Map 2: the Drowned Mire
+
+Swamp into the sunken temple: seven sections, six campfires (the third, at the temple gate, is the
+halfway one), a 3-phase mini-boss. Built on all three tiers. Everything marked **(default)** here
+was my call and is the first thing to change if it plays wrong.
+
+**How hard.** A map's monsters can be tougher than the monster table says: the map carries its own
+multipliers, applied on top of the tier's. Map 2's are x1.22 health and x1.29 damage **(default)**,
+which puts its tier 1 about halfway between map 1's tiers 1 and 2, as section "Difficulty tiers"
+asks. Map 1's are x1.
+
+**What is new underfoot.**
+
+| Thing | Rule |
+|---|---|
+| Mire (shallow green water) | Walkable, at 55% speed. Monsters that cannot swim wade at 60% |
+| Deep water (black in the swamp, blue in the temple) | Nothing walks or dashes across it. Shots, bombs and flyers cross |
+| Rotten planks, cracked slabs | Hold for 0.6 s after the hero steps on them, then fall away for 4.5 s and come back. A hero caught on one takes trap damage and is put back on the last sound footing. Cross without stopping |
+| Sluice wheels | Each turn of a wheel takes its water channel from high to low or back. At high water a channel is deep and its stone rafts can be walked on; at low water the channel is wet floor and the rafts lie at the bottom of their shafts. The water starts every turn where the map sets it, so a party can never be stranded |
+| Gas vents | Breathe out a cloud for about a third of their cycle. Standing in it poisons |
+| Poison | 1 damage a second for a few seconds, through armour and the moment of safety after a hit. More poison makes it last longer, not hurt more. A heart clears it; so does the end of the turn. The HP bar turns purple |
+| Anything on foot standing where a floor falls or the water rises | Is lost. What swims stays in the water |
+
+**Sections.**
+
+| # | Section | What it asks |
+|---|---|---|
+| 1 | The Sodden Road | Mire, toads and leeches for the first time |
+| 2 | Leechwater | A lake crossed on boardwalks and rotten planks. The lever for the reed gate is on an islet reached by wading through leech water |
+| 3 | The Lizard Village | Gas vents on the way in. The blue key is in the witch-doctor's hut; the temple door needs it |
+| 4 | The Sunken Gate | The first wheel: drain the court to cross it. Drowned dead lie under the puddles. A lever at the far end opens a shortcut back to the temple gate for good |
+| 5 | The Sluice Halls | Two waters, two wheels each, and an order to find: the rafts to the first wheel ride the water that bars the way out. Then a gallery of cracked slabs over a drop |
+| 6 | The Ossuary | A corridor of vents, then four fires to light in the order the Penitent gives as a riddle (east, then against the sun) |
+| 7 | The Drowned Sanctum | A guard room, then the Priest |
+
+**Monsters.** Slimes and bats return as filler. Base numbers, before the map and the tier:
+
+| Monster | HP / hit | What it does |
+|---|---|---|
+| Bog Toad | 11 / 4 | Sits, then leaps onto where the hero stands; a red circle shows where. Its hit poisons |
+| Mire Leech | 4 / 2 | Fast in the mire, at 40% speed out of it. Comes in swarms. Its bite poisons |
+| Will-o'-wisp | 6 / 4 | Flies. Drifts close, flares (a red circle), bursts, and blinks away |
+| Lizardfolk Spearman | 15 / 5 | A long, narrow thrust: sidestep it. Not slowed by mire |
+| Lizardfolk Shaman | 9 / 3 | Throws hexes that poison, and heals a wounded ally near it instead when there is one |
+| Drowned Dead | 19 / 5 | Lies under the water until the hero is within about three tiles; only ripples show. Slow and tough; its hit slows |
+| Leech Clutch, Sunken Coffin | 30, 34 | Generators (tier 2 and up) for leeches and the drowned |
+
+Variants on the higher tiers, in the same table as map 1's (`src/data/tiers.ts`):
+
+| Variant | Replaces | Trick | Tiers |
+|---|---|---|---|
+| Bloat Toad (yellow, larger) | Bog Toad | Leaves a poison cloud where it dies | 2: 30% of toads, 3: 45% |
+| Grave Light (violet) | Will-o'-wisp | Its burst throws six sparks | 2: 30% of wisps, 3: 45% |
+| Marsh Stalker (dark scales) | Spearman | Thrusts twice, turning between them | 3: 35% of spearmen |
+| Mire Witch (white robe) | Shaman | Three hexes in a fan, and heals more | 3: 40% of shamans |
+
+The shared roster is 64 monsters. Tier 2 adds 14 and tier 3 adds 30 (map 1 adds 10 and 20 to its 61).
+
+**The Drowned Priest.** Where the Chief runs the hero down, the Priest keeps a spell's length away
+and fights with the water. 48, 56 and 66 HP in his three phases, before the map and the tier. The
+sanctum is lit for the fight: the hero sees all of it.
+
+- **Bolts:** a fan of three (five in the last phase).
+- **Geysers:** red circles, one under the hero and the rest around them, that burst after a moment.
+- **The flood:** when his guard first breaks the outer ring of the sanctum goes under; at the second
+  break everything does but the middle and the stone round each pillar. Flooded floor is mire.
+- **Surge** (once there is a flood): every flooded tile flashes, then strikes whoever stands in it.
+  Dry stone is safe. Afterwards he is spent for 1.5 s and takes half as much again.
+- **Sinks:** crowded for about a second, he sinks into the floor and rises at whichever of his seven
+  places is furthest away, with a splash that hurts anyone on it. He cannot be hurt while under.
+- **Helpers:** two drowned at the first break; on tier 2 a shaman as well; on tier 3 a Marsh Stalker
+  and a Mire Witch at the second.
+- **Whirlpool** (tiers 2 and 3): opens under the hero and drags them toward its eye, which hurts.
+- **Wave** (tier 3): a wall of bolts crosses the sanctum from one side with one gap three tiles
+  wide, shown in green. The pillars stop it too.
+
+**Secrets and items.** As on map 1, a tier's secrets are sealed on the other tiers.
+
+| Tier | Secret | How it opens | Prize |
+|---|---|---|---|
+| 1 | The hollow in the rock | Bomb the cracked rock north of the first clearing | Wading Boots |
+| 1 | Where the rafts ride | Drain the court to get through a side door, then raise the water again from inside | Antivenom Charm |
+| 1 | Across the broken floor | Dash over the gap north of the gallery | Stone Skin, and a life shrine |
+| 2 | Behind the tilted flame | Turn the odd torch in the wisp gallery | Tidecaller |
+| 2 | The far shore | Hit a lever out on the lake with something thrown or shot | A rare or better item |
+| 3 | The cold altar | Light a brazier out in the gallery's drop with a fire bolt or a bomb | Wisp Lantern |
+| 3 | The witch-doctor's cache | Park the village's stone on its plate | A rare or better item, and a life shrine |
+
+| Item | Rarity | Power | Found |
+|---|---|---|---|
+| Wading Boots | Uncommon, passive | Mire does not slow; floors that give way hold longer | Adventurer secret |
+| Antivenom Charm | Uncommon, passive | Immune to poison | Adventurer secret |
+| Stone Skin | Uncommon | 2.6 s of taking no damage and no shove, at half speed | Adventurer secret |
+| Blowpipe | Uncommon | Quick darts that poison monsters | The Priest's first defeat on Adventurer |
+| Fire Bolt | Uncommon | Was in the game but could not be found anywhere | The Priest's first defeat on Adventurer |
+| Tidecaller | Rare | A wave that hurls back everything in front of the hero and leaves it slowed | Veteran secret |
+| Leech Ring | Rare, passive | Every kill heals 1 HP | The Priest's first defeat on Veteran |
+| Wisp Lantern | Legendary, passive | A caught wisp lights like a lantern and strikes the nearest monster every 1.5 s | Legend secret |
+| The Drowned Crown | Legendary | Opens a whirlpool at the cursor that drags monsters in, holds them and grinds them down | The Priest's first defeat on Legend |
+
+The Wisp Lantern costs 9 Prowess, more than one map's feats can reach: it needs feats from both maps.
+
+**Also built with it:** the camp's map list now picks the map (the furthest open one is suggested),
+two music tracks (swamp, temple), five sound effects, and two NPCs (the Old Ferryman, the Penitent).
 
 ### Inside a section
 
@@ -502,7 +609,7 @@ upgrades, so map 2 is close to impossible on a first run.
 - About 12-15 items across the three categories.
 - Three music tracks (hub, map, boss) and core sound effects.
 
-Maps 2-8, the two full bosses and the tier system follow once map 1 feels right.
+Maps 3-8 and the two full bosses follow. Map 2 and the tier system are built (section 6).
 Of the 2026-11-25 revision, the starter kit rework (Prowess, offers by role,
 one pinned item, re-rolls) is built on map 1. Prowess for the halfway campfire
 is awarded when the run ends, not at the campfire itself. First-time secret
@@ -529,6 +636,11 @@ higher tier's own secrets, and four tier-only items.
   higher tiers' secrets are enough (there are no signs or NPC lines for them).
 - Variants and the Chief's added attacks: their numbers, and whether the Chief
   should gain a different attack in each phase instead of the same ones throughout.
+- Map 2 has been checked by the map validator, the rule checks and a scripted play-through of each
+  mechanic and each boss tier, but not played start to finish by a person. Its numbers are all
+  first guesses: the map's multipliers, every monster and item, vent and plank timings, the Priest.
+- Map 2's water: whether resetting the levels every turn is right, or whether they should stay as
+  the last hero left them.
 - Old saves: Quartermaster levels already bought change meaning, from a kit
   discount to a re-roll discount. Nothing is refunded as built; decide whether
   it should be.

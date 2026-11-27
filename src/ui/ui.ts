@@ -5,7 +5,8 @@ import * as app from '../app';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS, ITEM_LIST, RARITY_NAMES, STARTER_WEAPON, type ItemDef } from '../data/items';
 import { MAPS, getMap } from '../data/maps';
-import { MONSTERS } from '../data/monsters';
+import { BOSS_LINES, MONSTERS } from '../data/monsters';
+import type { MapDef } from '../world/mapdef';
 import { TIERS, TIER_COUNT, tierDef } from '../data/tiers';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../data/upgrades';
 import { scene } from '../game/scene';
@@ -209,7 +210,8 @@ let selHero = 0;
 let addingHero = false;
 /** The difficulty tier chosen for the next run. 0: not chosen yet, so the camp suggests one. */
 let selTier = 0;
-const HUB_MAP = 'map1'; // the only map built so far
+/** The map chosen for the next run. Empty: not chosen yet, so the camp suggests one. */
+let selMap = '';
 
 export function hubScreen(): void {
   const s = G.save!;
@@ -217,6 +219,13 @@ export function hubScreen(): void {
   party = party.filter((i) => i < s.heroes.length);
   if (!party.length && !s.run) party = s.heroes.map((_, i) => i);
   if (selHero >= s.heroes.length) selHero = Math.max(0, s.heroes.length - 1);
+  // suggest the furthest map that is open and built
+  const playable = MAPS.filter((m) => m.build && m.number <= s.mapsUnlocked);
+  if (!playable.some((m) => m.id === selMap)) {
+    selMap = playable[playable.length - 1].id;
+    selTier = 0;
+  }
+  const HUB_MAP = selMap;
   // suggest the hardest open tier that is still to be cleared, or the hardest open one
   const openTiers = TIERS.filter((t) => tierUnlocked(s, HUB_MAP, t.tier));
   if (!openTiers.some((t) => t.tier === selTier)) selTier = ([...openTiers].reverse().find((t) => !tierClears(s, HUB_MAP, t.tier)) ?? openTiers[openTiers.length - 1]).tier;
@@ -290,7 +299,8 @@ export function hubScreen(): void {
     const built = !!m.build;
     const kn = k[m.id];
     const sub = !open ? 'locked' : !built ? 'not built yet' : kn?.clears ? `cleared ×${kn.clears}` : 'open';
-    return `<div class="maprow ${open && built ? 'open' : 'locked'}" title="${!open ? 'Clear the map before it' : esc(m.blurb)}"><b>${m.number}. ${open ? esc(m.name) : '???'}</b><span class="muted small">${sub}</span></div>`;
+    const pick = open && built && !s.run;
+    return `<div class="maprow ${open && built ? 'open' : 'locked'} ${pick && m.id === HUB_MAP ? 'sel' : ''}" ${pick ? `data-act="map" data-id="${m.id}"` : ''} title="${!open ? 'Clear the map before it' : esc(m.blurb)}"><b>${m.number}. ${open ? esc(m.name) : '???'}</b><span class="muted small">${sub}</span></div>`;
   }).join('');
 
   let runBox: string;
@@ -315,7 +325,7 @@ export function hubScreen(): void {
     if (feats.length) toWin.push(`<span class="prow" title="Prowess each hero can still earn here: the halfway campfire, the clear, and a clear without falling">${ico(IC.Prowess, 'sm')}${feats.map((x) => `${esc(x.name)} +${x.n}`).join(', ')}</span>`);
     const prizes = def.objects.filter((o) => o.type === 'pedestal' && o.secret && !prizeTaken(s, HUB_MAP, o.secret)).length;
     if (prizes) toWin.push(`${prizes} secret ${prizes === 1 ? 'prize' : 'prizes'}`);
-    // items found only on this tier and not discovered yet, as silhouettes: its secret prizes and what the Chief's first defeat here unlocks
+    // items found only on this tier and not discovered yet, as silhouettes: its secret prizes and what the boss's first defeat here unlocks
     const items = [...new Set([...def.objects.filter((o) => o.type === 'pedestal' && o.item).map((o) => o.item!), ...def.clearUnlocks])].filter((id) => !s.pool.includes(id));
     if (items.length) toWin.push(`<span class="nobr" title="${items.length} undiscovered ${items.length === 1 ? 'item' : 'items'}">${items.map((id) => ico(ITEMS[id].icon, 'sm sil')).join('')}</span>`);
     if (selTier < TIER_COUNT && !tierUnlocked(s, HUB_MAP, selTier + 1)) toWin.push(`${TIERS[selTier].name} tier`);
@@ -395,6 +405,13 @@ export function hubScreen(): void {
         if (res === 'none') return;
         audio.sfx(res === 'added' ? 'buy' : 'ui');
         app.saveNow();
+        hubScreen();
+      },
+      map: (el) => {
+        if (el.dataset.id === selMap) return;
+        selMap = el.dataset.id!;
+        selTier = 0;
+        audio.sfx('ui');
         hubScreen();
       },
       tier: (el) => {
@@ -835,7 +852,7 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
         ${musicToggle()}</div>
       <div class="campcols"><div class="col grow">${heroPanels}</div>${shop ? `<div class="col shopcol">${shop}</div>` : ''}</div>
       <div id="desc" class="desc"></div>
-      <div class="row"><span class="muted small grow">Trade by clicking an item, then a space on any hero. ${last ? "The Chief's hall lies ahead." : `Next: ${esc(def.sectionNames[index])}.`}</span>
+      <div class="row"><span class="muted small grow">Trade by clicking an item, then a space on any hero. ${last ? esc(BOSS_LINES[def.boss.type].ahead) : `Next: ${esc(def.sectionNames[index])}.`}</span>
         <button class="btn big" data-act="leave" data-default>Break camp</button></div>
     </div>`,
     {
@@ -884,7 +901,10 @@ export function campScreen(index: number, arrived: number, onLeave: () => void):
   );
 }
 
-export function summaryScreen(sum: RunSummary, mapName: string, onDone: () => void): void {
+export function summaryScreen(sum: RunSummary, def: MapDef, onDone: () => void): void {
+  const mapName = def.name;
+  const next = MAPS.find((m) => m.number === def.number + 1);
+  const onward = !next ? '' : next.build ? ` The way to ${next.name} is open.` : ' The next map is unlocked (it will be playable once it is built).';
   const rows = sum.rows
     .map((row) => `<div class="uprow">${heroIco(row.color)}<div class="grow"><b style="color:${HERO_COLORS[row.color]}">${esc(row.name)}</b><br><span class="muted small">${row.gold} gold carried + ${row.bonus} bonus</span>${row.feats.length ? `<br><span class="prow small">${ico(IC.Prowess, 'sm')}+${row.feats.length} Prowess, now ${row.prowess}: ${row.feats.map(esc).join(' · ')}</span>` : ''}</div><b>${ico(IC.Renown, 'sm')}+${row.total}</b></div>`)
     .join('');
@@ -896,7 +916,7 @@ export function summaryScreen(sum: RunSummary, mapName: string, onDone: () => vo
     'summary',
     `<div class="screen dim ${sum.won ? 'gold' : 'red'}"><div class="panel mid">
       <h2>${sum.won ? `${esc(mapName)} is cleared on ${tier.name}!` : 'The run is over'}</h2>
-      <p class="muted">${sum.won ? 'The Bandit Chief is beaten. The next map is unlocked (it will be playable once it is built).' : 'The party is out of lives. What you earned comes home with you: spend it at camp and go further next time.'}</p>
+      <p class="muted">${sum.won ? esc(BOSS_LINES[def.boss.type].beaten + onward) : 'The party is out of lives. What you earned comes home with you: spend it at camp and go further next time.'}</p>
       <p class="small">${tier.name} tier · Reached campfire ${sum.checkpoint} · ${sum.kills} monsters defeated · ${sum.secrets} secrets found</p>
       ${rows}${unlocks}
       <button class="btn big" data-act="done" data-default>Back to camp</button></div></div>`,

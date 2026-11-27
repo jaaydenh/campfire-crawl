@@ -1,5 +1,6 @@
 import type { MapDef } from '../world/mapdef';
 import { buildMap1 } from './map1';
+import { buildMap2 } from './map2';
 import { tierDef } from './tiers';
 
 export interface MapInfo {
@@ -12,7 +13,7 @@ export interface MapInfo {
 
 export const MAPS: MapInfo[] = [
   { id: 'map1', number: 1, name: 'Whispering Woods', blurb: 'Forest into the bandit cave', build: buildMap1 },
-  { id: 'map2', number: 2, name: 'The Drowned Mire', blurb: 'Swamp into the sunken temple' },
+  { id: 'map2', number: 2, name: 'The Drowned Mire', blurb: 'Swamp into the sunken temple', build: buildMap2 },
   { id: 'map3', number: 3, name: 'Hollow Graves', blurb: 'Graveyard into the crypt' },
   { id: 'map4', number: 4, name: 'Stormwatch Pass', blurb: 'Mountain pass into the fortress' },
   { id: 'map5', number: 5, name: 'The Scoured Waste', blurb: 'Desert into the tomb' },

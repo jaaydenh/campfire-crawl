@@ -5,15 +5,15 @@ import { audio } from '../audio/audio';
 import { G, activeHero, profileOf, run } from '../core';
 import { ITEMS } from '../data/items';
 import { getMap } from '../data/maps';
-import { TIERS, tierDef, type TierDef } from '../data/tiers';
+import { TIERS, tierDef, tierOnMap, type TierDef } from '../data/tiers';
 import { input, moveKeys, slotHeld } from '../input';
 import { ARROW_MAX, ARROW_PILE, RESCUE_REACH, addArrows, discoverItem, fillMissingCharges, giveItem, knowledgeOf, outfit, hasFlag, heroStats, packBits, takePrize, rescueFallen, rollChest, setFlag, type HeroStats, type LootTier } from '../run';
 import { TILE, VIEW_H, VIEW_W, controlsOf, type GroundItem, type ItemStack } from '../types';
-import type { MapDef } from '../world/mapdef';
+import { CRUMBLE_TILES, wallKind, type MapDef } from '../world/mapdef';
 import { MELEE_CONE, MELEE_SLACK, RANGED_CONE, leadAngle, pickTarget, type AimTarget } from './aim';
 import { angDiff, type Bomb, type Hero, type Mon, type Pickup, type Proj } from './ents';
 import { damageMon, drawTelegraphs, spawnMonsters, updateMonsters } from './monsters';
-import { World, type Obj } from './world';
+import { CRUMBLE, World, type Obj, type TileChange } from './world';
 
 type Img = Phaser.GameObjects.Image;
 
@@ -62,13 +62,30 @@ interface Shot {
   dmg: number;
   life: number; // ms
   fire?: boolean;
+  poison?: number; // ms of poison it leaves on a monster
   sfx: 'shoot' | 'fire';
 }
 const SHOTS: Record<string, Shot> = {
   bow: { frame: F.Arrow, speed: 240, dmg: 3.5, life: 900, sfx: 'shoot' },
   knives: { frame: F.Knife, speed: 270, dmg: 2.5, life: 520, sfx: 'shoot' },
   firebolt: { frame: F.Firebolt0, speed: 175, dmg: 5, life: 1200, fire: true, sfx: 'fire' },
+  blowpipe: { frame: F.Dart, speed: 265, dmg: 1.5, life: 640, poison: 4200, sfx: 'shoot' },
 };
+
+/** Poison on the hero: 1 damage each tick, through armour and the moment of safety after a hit. */
+const POISON_TICK = 1000;
+/** Wading through mire without the boots for it. */
+const BOG_SLOW = 0.55;
+/** Stone Skin: how long it lasts. */
+const STONE_MS = 2600;
+/** Tidecaller: reach, half-width of the wave, damage, shove, and how long monsters stay soaked. */
+const TIDE = { range: 62, half: 0.95, dmg: 2, knock: 330, slow: 2600 };
+/** The Drowned Crown's whirlpool: radius, life, how far it can be opened, pull, and its grinding damage. */
+const POOL = { r: 42, ms: 3400, reach: 104, pull: 85, tick: 500, dmg: 1.6 };
+/** The Wisp Lantern: how often the wisp strikes, how far, and how hard. */
+const WISP = { every: 1500, reach: 62, dmg: 2.5 };
+/** A whirlpool the Drowned Priest opens under the hero: radius, life, pull, and what its eye does. */
+export const VORTEX = { r: 38, ms: 3200, pull: 58, eye: 11, tick: 700 };
 
 /** Where the aim assist looks for an item: how far, how wide, and how fast its shot flies (0 when it is not a shot). */
 interface Reach {
@@ -89,6 +106,8 @@ function aimReach(id: string): Reach | null {
   if (sh) return { kind: 'shot', reach: ((sh.speed * sh.life) / 1000) * 0.92, cone: RANGED_CONE, speed: sh.speed, fire: !!sh.fire };
   if (id === 'kingsplitter') return { kind: 'shot', reach: ((AXE.speed * AXE.out) / 1000) * 0.92, cone: RANGED_CONE, speed: AXE.speed, fire: false };
   if (id === 'bombs') return { kind: 'throw', reach: BOMB_THROW, cone: RANGED_CONE, speed: 0, fire: false };
+  if (id === 'crown') return { kind: 'throw', reach: POOL.reach, cone: RANGED_CONE, speed: 0, fire: false };
+  if (id === 'tide') return { kind: 'swing', reach: TIDE.range, cone: MELEE_CONE, speed: 0, fire: false };
   return null;
 }
 
@@ -114,8 +133,14 @@ export class GameScene extends Phaser.Scene {
   private sniffed = new Set<string>();
   prompt = '';
   fogVersion = 0;
-  zone: 'forest' | 'cave' = 'forest';
+  indoors = false;
   tele!: Phaser.GameObjects.Graphics;
+  /** Poison clouds hanging in the air: from gas vents and from bloat toads. */
+  clouds: { x: number; y: number; r: number; t: number; puff: number }[] = [];
+  /** Whirlpools the hero has opened with the Drowned Crown. */
+  pools: { x: number; y: number; t: number; tick: number; dmg: number }[] = [];
+  /** Whirlpools the Drowned Priest has opened under the hero. */
+  vortices: { x: number; y: number; t: number; tick: number; dmg: number }[] = [];
   /** Facing controls: the facing tick and the brackets around what the aim assist would pick. */
   private aimMark!: Phaser.GameObjects.Graphics;
   /** Smoothed monster velocities in pixels per second, so assisted shots can lead a moving target. */
@@ -137,6 +162,10 @@ export class GameScene extends Phaser.Scene {
   private promptGround: GroundItem | null = null;
   private leverDebounce = new Map<Obj, number>();
   private ending = false;
+  private lanternSpr: Img | null = null;
+  private lanternT = 0;
+  private wadeT = 0;
+  private valveT = 0;
   private wasRaging = false;
   private rageTold = false; // the Berserker Charm explains itself once a turn
 
@@ -165,7 +194,7 @@ export class GameScene extends Phaser.Scene {
     const r = run();
     fillMissingCharges(r);
     this.def = getMap(r.mapId, r.tier);
-    this.tier = tierDef(r.tier);
+    this.tier = tierOnMap(tierDef(r.tier), this.def.scale);
     this.world = new World(this.def, r, G.save!);
     const { w, h } = this.world;
     const data: number[][] = [];
@@ -230,6 +259,11 @@ export class GameScene extends Phaser.Scene {
     for (const p of this.picks) p.spr.destroy();
     for (const b of this.bombs) b.spr.destroy();
     this.clearFallen();
+    this.lanternSpr?.destroy();
+    this.lanternSpr = null;
+    this.clouds = [];
+    this.pools = [];
+    this.vortices = [];
     this.mons = [];
     this.projs = [];
     this.picks = [];
@@ -259,6 +293,8 @@ export class GameScene extends Phaser.Scene {
     this.wasRaging = this.rageTold = false;
     this.world.bossLocked = false;
     this.world.resetPuzzlePieces();
+    // the water stands where it started, fallen floors are back, and the sanctum is as flooded as the Priest's phase left it
+    this.applyTiles([...this.world.resetWater(), ...this.world.resetCrumble(), ...this.world.floodArena(hasFlag(r, 'boss:dead') ? 0 : r.bossPhase)]);
     for (const o of this.world.objs) {
       if (o.def.type === 'block') this.objSpr.get(o)?.setPosition(center(o.x), center(o.y));
       this.refreshObjSprite(o);
@@ -270,7 +306,7 @@ export class GameScene extends Phaser.Scene {
     const color = profileOf(rh).color;
     const spr = this.add.image(0, 0, `hero${color}`, 0).setOrigin(0.5, 0.7);
     const shield = this.add.image(0, 0, 'fx', F.Shield).setVisible(false);
-    this.hero = { x: center(cp.x), y: center(cp.y), kx: 0, ky: 0, aim: Math.PI / 2, face: Math.PI / 2, faceX: 0, faceY: 1, faceT: 0, aimHold: 0, cd: [0, 0, 0], cdMax: [1, 1, 1], iframes: 1000, slowT: 0, blocking: false, dash: null, moving: false, walkT: 0, dead: false, spr, shield };
+    this.hero = { x: center(cp.x), y: center(cp.y), kx: 0, ky: 0, aim: Math.PI / 2, face: Math.PI / 2, faceX: 0, faceY: 1, faceT: 0, aimHold: 0, cd: [0, 0, 0], cdMax: [1, 1, 1], iframes: 1000, slowT: 0, poisonT: 0, poisonTick: 0, stoneT: 0, safeX: center(cp.x), safeY: center(cp.y), blocking: false, dash: null, moving: false, walkT: 0, dead: false, spr, shield };
     spawnMonsters(this);
     this.placeFallen();
     this.lastTile = -1;
@@ -299,6 +335,7 @@ export class GameScene extends Phaser.Scene {
       this.updateObjects(dt);
       this.updateVision(false);
       drawTelegraphs(this);
+      this.updateHazards(dt);
       this.drawAimMark();
     }
     G.hooks.frame();
@@ -316,9 +353,39 @@ export class GameScene extends Phaser.Scene {
     for (let yy = y0; yy <= y1; yy++)
       for (let xx = x0; xx <= x1; xx++) {
         if (this.world.solid(xx, yy)) return true;
-        if (!fly && this.world.pit(xx, yy)) return true;
+        if (!fly && (this.world.pit(xx, yy) || this.world.deep(xx, yy))) return true;
       }
     return false;
+  }
+
+  /** True if a body centred at (x, y) is over deep water: a dash can cross a pit, but not that. */
+  private overDeep(x: number, y: number, r: number): boolean {
+    for (let yy = tx(y - r); yy <= tx(y + r); yy++) for (let xx = tx(x - r); xx <= tx(x + r); xx++) if (this.world.deep(xx, yy)) return true;
+    return false;
+  }
+
+  /** Redraws tiles the world has changed: water rising or falling, a floor giving way. */
+  applyTiles(changes: TileChange[]): void {
+    if (!changes.length) return;
+    const w = this.world;
+    for (const c of changes) this.layer?.putTileAt(c.t, c.i % w.w, Math.floor(c.i / w.w));
+    this.fogVersion++; // the minimap shows water levels
+    const h = this.hero;
+    if (h) w.computeFlow(tx(h.x), tx(h.y));
+    this.sweepMonsters();
+  }
+
+  /** Anything on foot that is standing where the floor has gone or the water has risen is lost. What swims stays in the water. */
+  private sweepMonsters(): void {
+    for (const m of this.mons) {
+      const ai = m.def.ai;
+      if (m.dead || m.boss || ai === 'flyer' || ai === 'wisp' || ai === 'generator' || (ai === 'leaper' && m.state === 'attack')) continue;
+      const mx = tx(m.x);
+      const my = tx(m.y);
+      if (this.world.walkable(mx, my) || (m.def.swims && this.world.deep(mx, my))) continue;
+      this.fx(F.Splash, m.x, m.y, 300);
+      damageMon(this, m, 9999, 0, 0);
+    }
   }
 
   /** Moves a body one axis at a time so it slides along walls. Returns true if it moved freely on both axes. */
@@ -353,6 +420,16 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) h.cd[i] = Math.max(0, h.cd[i] - dt);
     h.iframes -= dt;
     h.slowT -= dt;
+    h.stoneT -= dt;
+    if (h.poisonT > 0) {
+      h.poisonT -= dt;
+      h.poisonTick -= dt;
+      if (h.poisonTick <= 0) {
+        h.poisonTick = POISON_TICK;
+        this.poisonBite();
+        if (h.dead) return;
+      }
+    }
     const facing = this.facing;
     if (!facing) {
       const cam = this.cameras.main;
@@ -372,7 +449,12 @@ export class GameScene extends Phaser.Scene {
       h.blocking = [0, 1, 2].some((i) => rh.slots[i]?.id === 'shield' && this.slotHeld(i));
       if (facing) this.turnHero(mx, my, dt);
       const len = Math.hypot(mx, my) || 1;
-      const sp = this.stats.speed * (h.blocking ? 0.5 : 1) * (h.slowT > 0 ? 0.55 : 1);
+      const wading = this.world.bog(tx(h.x), tx(h.y));
+      const sp = this.stats.speed * (h.blocking ? 0.5 : 1) * (h.slowT > 0 ? 0.55 : 1) * (wading && !this.stats.waders ? BOG_SLOW : 1) * (h.stoneT > 0 ? 0.5 : 1);
+      if (wading && (mx || my) && (this.wadeT -= dt) <= 0) {
+        this.wadeT = 260;
+        this.fx(F.Ripple0, h.x, h.y + 3, 320);
+      }
       const free = this.moveBody(h, ((mx / len) * sp + h.kx) * s, ((my / len) * sp + h.ky) * s, HERO_R, false);
       const damp = Math.min(1, dt * 0.012);
       h.kx -= h.kx * damp;
@@ -414,7 +496,7 @@ export class GameScene extends Phaser.Scene {
       this.rageTold = true;
     }
     this.wasRaging = rage;
-    h.spr.setTint(h.slowT > 0 ? 0x9fd0ff : rage && Math.floor(this.clock / 140) % 2 ? 0xff8a7a : 0xffffff);
+    h.spr.setTint(h.stoneT > 0 ? 0x8f8f9c : h.poisonT > 0 && Math.floor(this.clock / 200) % 2 ? 0x9be06a : h.slowT > 0 ? 0x9fd0ff : rage && Math.floor(this.clock / 140) % 2 ? 0xff8a7a : 0xffffff);
     h.shield
       .setVisible(h.blocking)
       .setPosition(h.x + c * 8, h.y - 3 + sn * 8)
@@ -426,6 +508,15 @@ export class GameScene extends Phaser.Scene {
     const hty = tx(h.y);
     const ti = this.world.idx(htx, hty);
     if (ti !== this.lastTile) this.onHeroTile(htx, hty);
+    if (!h.dash) {
+      // the floor went from under them, or the water came up: back to the last sound footing, and it hurts
+      if (!this.world.walkable(htx, hty)) this.fallIn();
+      else if (!CRUMBLE_TILES.has(this.world.tile(htx, hty))) {
+        h.safeX = h.x;
+        h.safeY = h.y;
+      }
+    }
+    this.updateLantern(dt);
     for (const o of this.world.objs) {
       if (o.def.type === 'campfire' && o.def.index === run().checkpoint + 1 && Math.hypot(center(o.x) - h.x, center(o.y) - h.y) < 22) {
         this.reachCheckpoint(o);
@@ -519,7 +610,7 @@ export class GameScene extends Phaser.Scene {
     const h = this.hero!;
     const w = this.world;
     const clear = a.kind === 'shot' ? (t: AimTarget) => this.shotClear(t) : undefined;
-    const live = this.mons.filter((m) => !m.dead && w.visible[w.idx(tx(m.x), tx(m.y))]);
+    const live = this.mons.filter((m) => !m.dead && !(m.def.lurks && !m.alerted) && w.visible[w.idx(tx(m.x), tx(m.y))]);
     const m = pickTarget(live, h.x, h.y, h.face, a.reach, a.cone, clear);
     if (m) return { x: m.x, y: m.y, r: m.r, mon: m };
     if (a.kind === 'throw') return null;
@@ -608,6 +699,12 @@ export class GameScene extends Phaser.Scene {
     const w = this.world;
     this.lastTile = w.idx(htx, hty);
     w.computeFlow(htx, hty);
+    // a rotten raft or a cracked slab starts to go; the right boots buy a little time
+    if (w.stepCrumble(htx, hty, CRUMBLE.shake * (this.stats.waders ? 1.6 : 1))) {
+      audio.sfx('crumble');
+      const tile = this.layer?.getTileAt(htx, hty);
+      if (tile) tile.alpha = 0.6;
+    }
     // plates
     const solvedNow = w.updatePlates(htx, hty);
     for (const p of solvedNow) this.solvePuzzle(p, w.ofPuzzle(p, 'hidden').length ? 'The stone settles. A slab in the rock stays open.' : 'The gate grinds open for good.');
@@ -665,9 +762,8 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(400, 0.006);
       G.hooks.toast(this.boss.def.name, 'bad');
     }
-    const zone = w.isCave(htx, hty) ? 'cave' : 'forest';
-    this.zone = zone;
-    audio.music(w.bossLocked ? 'boss' : zone);
+    this.indoors = w.indoor(htx, hty);
+    audio.music(w.bossLocked ? 'boss' : this.def.music[this.indoors ? 'indoor' : 'outdoor']);
   }
 
   private reachCheckpoint(o: Obj): void {
@@ -680,10 +776,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Damages the hero unless dodged or blocked. Returns true if it landed. */
-  hurtHero(dmg: number, sx: number, sy: number, opts: { slow?: boolean; knock?: number } = {}): boolean {
+  hurtHero(dmg: number, sx: number, sy: number, opts: { slow?: boolean; knock?: number; poison?: number } = {}): boolean {
     const h = this.hero;
     if (!h || h.dead || h.dash || h.iframes > 0 || this.ending) return false;
     const a = Math.atan2(sy - h.y, sx - h.x);
+    if (h.stoneT > 0) {
+      // stone: the blow rings off
+      audio.sfx('block');
+      this.fx(F.Spark, h.x + Math.cos(a) * 7, h.y - 3 + Math.sin(a) * 7, 140);
+      h.iframes = 150;
+      return false;
+    }
     if (h.blocking && angDiff(a, h.aim) < 1.15) {
       audio.sfx('block');
       this.fx(F.Spark, h.x + Math.cos(a) * 9, h.y - 3 + Math.sin(a) * 9, 140);
@@ -702,6 +805,7 @@ export class GameScene extends Phaser.Scene {
     h.kx = -Math.cos(a) * k;
     h.ky = -Math.sin(a) * k;
     if (opts.slow) h.slowT = 2200;
+    if (opts.poison) this.poisonHero(opts.poison);
     this.number(h.x, h.y - 10, dmg, 0xff5a4a);
     this.cameras.main.shake(120, 0.004);
     audio.sfx('hurt');
@@ -710,6 +814,95 @@ export class GameScene extends Phaser.Scene {
       this.killHero();
     }
     return true;
+  }
+
+  /** Poisons the hero for a while. More poison makes it last longer, not bite harder. */
+  poisonHero(ms: number): void {
+    const h = this.hero;
+    if (!h || h.dead || this.ending || this.stats.antivenom || h.stoneT > 0) return;
+    if (h.poisonT <= 0) {
+      h.poisonTick = POISON_TICK;
+      audio.sfx('poison');
+      this.fx(F.Poison, h.x, h.y - 14, 500);
+    }
+    h.poisonT = Math.max(h.poisonT, ms);
+  }
+
+  /** One tick of poison. */
+  private poisonBite(): void {
+    const h = this.hero!;
+    const rh = activeHero();
+    const soaked = Math.min(rh.bonusHp ?? 0, 1);
+    if (soaked) rh.bonusHp = (rh.bonusHp ?? 0) - soaked;
+    rh.hp -= 1 - soaked;
+    this.number(h.x, h.y - 10, 1, 0x9be06a);
+    this.fx(F.Poison, h.x + (Math.random() - 0.5) * 6, h.y - 13, 400);
+    if (rh.hp <= 0) {
+      rh.hp = 0;
+      this.killHero();
+    }
+  }
+
+  /** The hero is standing where there is nothing to stand on: they scramble back to the last sound footing. */
+  private fallIn(): void {
+    const h = this.hero!;
+    const wet = this.world.deep(tx(h.x), tx(h.y));
+    this.fx(wet ? F.Splash : F.Poof0, h.x, h.y, 350);
+    audio.sfx(wet ? 'splash' : 'crumble');
+    h.x = h.safeX;
+    h.y = h.safeY;
+    h.kx = h.ky = 0;
+    h.iframes = 0;
+    this.hurtHero(this.stats.trapDmg + this.tier.trapDmg, h.x, h.y + 4, { knock: 0 });
+    G.hooks.toast(wet ? 'The planks sink under you. You haul yourself out.' : 'The floor falls away. You claw your way back up.', 'bad');
+    if (!h.dead) this.onHeroTile(tx(h.x), tx(h.y));
+  }
+
+  /** The Wisp Lantern: a caught wisp circles the hero and strikes the nearest monster in sight. */
+  private updateLantern(dt: number): void {
+    const h = this.hero!;
+    if (!this.stats.wisp) {
+      this.lanternSpr?.destroy();
+      this.lanternSpr = null;
+      return;
+    }
+    const a = this.clock / 420;
+    const x = h.x + Math.cos(a) * 11;
+    const y = h.y - 8 + Math.sin(a) * 5;
+    this.lanternSpr ??= this.add.image(x, y, 'wisp', 0).setScale(0.6).setTint(0xb8fff0);
+    this.lanternSpr.setPosition(x, y).setFrame(Math.floor(this.clock / 160) % 2).setDepth(entDepth(h.y + Math.sin(a) * 5));
+    if (Math.random() < dt / 300) this.fx(F.Sparkle, x, y, 260);
+    this.lanternT -= dt;
+    if (this.lanternT > 0) return;
+    const w = this.world;
+    let best: Mon | null = null;
+    let near = WISP.reach;
+    for (const m of this.mons) {
+      if (m.dead || m.def.ai === 'generator' || (m.def.lurks && !m.alerted) || !w.visible[w.idx(tx(m.x), tx(m.y))]) continue;
+      const d = Math.hypot(m.x - h.x, m.y - h.y) - m.r;
+      if (d < near && w.los(tx(h.x), tx(h.y), tx(m.x), tx(m.y))) {
+        near = d;
+        best = m;
+      }
+    }
+    if (!best) return;
+    this.lanternT = WISP.every;
+    this.bolt(x, y, best.x, best.y - 4, 0xb8fff0);
+    this.fx(F.Zap, best.x, best.y - 5, 220);
+    audio.sfx('zap');
+    damageMon(this, best, WISP.dmg * this.stats.dmgMult, 0, 0);
+  }
+
+  /** A jagged line that flashes and fades: a wisp's strike. */
+  bolt(x0: number, y0: number, x1: number, y1: number, color: number): void {
+    const g = this.add.graphics().setDepth(DEPTH.fx);
+    g.lineStyle(1, color, 1);
+    g.beginPath();
+    g.moveTo(x0, y0);
+    for (let i = 1; i < 4; i++) g.lineTo(x0 + ((x1 - x0) * i) / 4 + (Math.random() - 0.5) * 6, y0 + ((y1 - y0) * i) / 4 + (Math.random() - 0.5) * 6);
+    g.lineTo(x1, y1);
+    g.strokePath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
   }
 
   private killHero(): void {
@@ -778,7 +971,7 @@ export class GameScene extends Phaser.Scene {
           const dy = len ? mv.y / len : Math.sin(h.aim);
           let land = 0;
           for (let d = 2; d <= 58; d += 2) {
-            if (this.hits(h.x + dx * d, h.y + dy * d, HERO_R, true)) break;
+            if (this.hits(h.x + dx * d, h.y + dy * d, HERO_R, true) || this.overDeep(h.x + dx * d, h.y + dy * d, HERO_R)) break;
             if (!this.hits(h.x + dx * d, h.y + dy * d, HERO_R, false)) land = d;
           }
           if (land < 8) return;
@@ -794,6 +987,43 @@ export class GameScene extends Phaser.Scene {
           const s = Math.sin(h.aim);
           this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * AXE.speed, s * AXE.speed, { frame: F.Axe, dmg: AXE.dmg * mult, life: 3000, fromHero: true, spin: 16, r: 5, pierce: true, back: { t: AXE.out, slot: i, turned: false } });
           audio.sfx('swing');
+          break;
+        }
+        case 'stoneskin': {
+          h.stoneT = STONE_MS;
+          h.poisonT = 0;
+          h.kx = h.ky = 0;
+          audio.sfx('block');
+          const ring = this.add.circle(h.x, h.y - 4, 14, 0xb0b0c0, 0.3).setStrokeStyle(1, 0xe4e9ee).setDepth(DEPTH.fx);
+          this.tweens.add({ targets: ring, scale: 0.4, alpha: 0, duration: 300, onComplete: () => ring.destroy() });
+          break;
+        }
+        case 'tide': {
+          // a wave that throws back everything in front of the hero and leaves it soaked
+          audio.sfx('splash');
+          for (let n = 0; n < 7; n++) {
+            const a = h.aim + (n / 6 - 0.5) * 2 * TIDE.half * 0.9;
+            const d = TIDE.range * (0.45 + (n % 2) * 0.4);
+            this.time.delayedCall(n * 18, () => this.fx(F.Splash, h.x + Math.cos(a) * d, h.y - 3 + Math.sin(a) * d, 320));
+          }
+          for (const m of this.mons) {
+            const d = Math.hypot(m.x - h.x, m.y - h.y) - m.r;
+            if (m.dead || d > TIDE.range) continue;
+            const a = Math.atan2(m.y - h.y, m.x - h.x);
+            if (d > 6 && angDiff(a, h.aim) > TIDE.half) continue;
+            if (!this.world.los(tx(h.x), tx(h.y), tx(m.x), tx(m.y))) continue;
+            damageMon(this, m, TIDE.dmg * mult, Math.cos(a) * TIDE.knock, Math.sin(a) * TIDE.knock, 400);
+            if (!m.dead) m.slowT = TIDE.slow;
+          }
+          break;
+        }
+        case 'crown': {
+          // a whirlpool at the cursor; with facing controls, on the monster ahead or a fixed distance in front
+          const cam = this.cameras.main;
+          const reach = target ? Math.hypot(target.x - h.x, target.y - h.y) : this.facing ? 60 : Math.hypot(input.mx + cam.scrollX - h.x, input.my + cam.scrollY - h.y);
+          const d = Math.min(POOL.reach, reach);
+          this.pools.push({ x: h.x + Math.cos(h.aim) * d, y: h.y + Math.sin(h.aim) * d, t: POOL.ms, tick: 0, dmg: POOL.dmg * mult });
+          audio.sfx('splash');
           break;
         }
         case 'scroll':
@@ -862,7 +1092,7 @@ export class GameScene extends Phaser.Scene {
     const h = this.hero!;
     const c = Math.cos(h.aim);
     const s = Math.sin(h.aim);
-    this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * sh.speed, s * sh.speed, { frame: sh.frame, dmg: sh.dmg * mult, life: sh.life, fromHero: true, fire: !!sh.fire });
+    this.addProj(h.x + c * 6, h.y - 2 + s * 6, c * sh.speed, s * sh.speed, { frame: sh.frame, dmg: sh.dmg * mult, life: sh.life, fromHero: true, fire: !!sh.fire, poison: sh.poison });
     audio.sfx(sh.sfx);
   }
 
@@ -871,12 +1101,12 @@ export class GameScene extends Phaser.Scene {
     y: number,
     vx: number,
     vy: number,
-    o: { frame: F; dmg: number; life: number; fromHero: boolean; fire?: boolean; web?: boolean; spin?: number; r?: number; pierce?: boolean; trail?: boolean; tint?: number; scale?: number; skip?: Set<Mon>; back?: Proj['back'] },
+    o: { frame: F; dmg: number; life: number; fromHero: boolean; fire?: boolean; web?: boolean; poison?: number; spin?: number; r?: number; pierce?: boolean; trail?: boolean; tint?: number; scale?: number; skip?: Set<Mon>; back?: Proj['back'] },
   ): void {
     const spr = this.add.image(x, y, 'fx', o.frame).setRotation(Math.atan2(vy, vx)).setDepth(DEPTH.fx);
     if (o.tint) spr.setTint(o.tint);
     if (o.scale) spr.setScale(o.scale);
-    this.projs.push({ x, y, vx, vy, r: o.r ?? 3, dmg: o.dmg, fromHero: o.fromHero, life: o.life, pierce: !!o.pierce, trail: o.trail ? 0 : undefined, back: o.back, fire: !!o.fire, web: !!o.web, spin: o.spin ?? 0, hit: new Set(o.skip), spr });
+    this.projs.push({ x, y, vx, vy, r: o.r ?? 3, dmg: o.dmg, fromHero: o.fromHero, life: o.life, pierce: !!o.pierce, trail: o.trail ? 0 : undefined, back: o.back, fire: !!o.fire, web: !!o.web, poison: o.poison ?? 0, spin: o.spin ?? 0, hit: new Set(o.skip), spr });
   }
 
   /** True while the Berserker Charm is doing its work: its hero is at half health or less. */
@@ -935,6 +1165,7 @@ export class GameScene extends Phaser.Scene {
           if (m.dead || p.hit.has(m) || Math.hypot(m.x - p.x, m.y - 3 - p.y) > p.r + m.r + 1) continue;
           const sp = Math.hypot(p.vx, p.vy) || 1;
           damageMon(this, m, p.dmg, (p.vx / sp) * 80, (p.vy / sp) * 80);
+          if (p.poison && !m.dead) m.poisonT = Math.max(m.poisonT, p.poison);
           audio.sfx('hit');
           if (p.pierce) {
             p.hit.add(m);
@@ -944,7 +1175,7 @@ export class GameScene extends Phaser.Scene {
           break;
         }
       } else if (!gone && !h.dead && Math.hypot(h.x - p.x, h.y - 3 - p.y) < p.r + HERO_R + 1) {
-        this.hurtHero(p.dmg, p.x - p.vx * 0.05, p.y - p.vy * 0.05, { slow: p.web, knock: 90 });
+        this.hurtHero(p.dmg, p.x - p.vx * 0.05, p.y - p.vy * 0.05, { slow: p.web, knock: 90, poison: p.poison });
         gone = true;
       }
       if (caught && b && !h.dead && activeHero().slots[b.slot]?.id === 'kingsplitter') {
@@ -1001,15 +1232,16 @@ export class GameScene extends Phaser.Scene {
     let broke = false;
     for (let yy = tx(y) - r; yy <= tx(y) + r; yy++)
       for (let xx = tx(x) - r; xx <= tx(x) + r; xx++) {
-        if (w.tile(xx, yy) !== T.Cracked || Math.hypot(center(xx) - x, center(yy) - y) > radius + 10) continue;
-        this.setTile(xx, yy, T.Rubble);
+        const kind = wallKind(w.tile(xx, yy));
+        if (!kind || w.tile(xx, yy) !== kind.cracked || Math.hypot(center(xx) - x, center(yy) - y) > radius + 10) continue;
+        this.setTile(xx, yy, kind.rubble);
         setFlag(run(), `crack:${xx},${yy}`);
         this.fx(F.Poof0, center(xx), center(yy), 300);
         broke = true;
       }
     if (broke) {
       audio.sfx('door');
-      G.hooks.toast('The cracked rock gives way!', 'good');
+      G.hooks.toast(this.indoors && this.def.music.indoor === 'temple' ? 'The cracked wall gives way!' : 'The cracked rock gives way!', 'good');
       this.updateVision(true);
     }
   }
@@ -1021,9 +1253,10 @@ export class GameScene extends Phaser.Scene {
     w.tiles[w.idx(xx, yy)] = t;
     this.layer?.putTileAt(t, xx, yy);
     // a wall directly above newly opened floor shows its face
-    if (!w.solid(xx, yy) && w.tile(xx, yy - 1) === T.CaveWall) {
-      w.tiles[w.idx(xx, yy - 1)] = T.CaveWallFace;
-      this.layer?.putTileAt(T.CaveWallFace, xx, yy - 1);
+    const above = wallKind(w.tile(xx, yy - 1));
+    if (!w.solid(xx, yy) && above && w.tile(xx, yy - 1) === above.wall) {
+      w.tiles[w.idx(xx, yy - 1)] = above.face;
+      this.layer?.putTileAt(above.face, xx, yy - 1);
     }
   }
 
@@ -1061,6 +1294,10 @@ export class GameScene extends Phaser.Scene {
       case 'sconce':
       case 'decor':
         return d.frame ?? O.Sconce;
+      case 'valve':
+        return o.on ? O.ValveLow : O.ValveHigh;
+      case 'vent':
+        return o.exists ? (o.up ? O.VentOn : O.VentOff) : -1;
       default:
         return -1;
     }
@@ -1073,7 +1310,7 @@ export class GameScene extends Phaser.Scene {
       this.objSpr.set(o, this.add.image(center(o.x), center(o.y), 'npc', d.sprite ?? 0).setDepth(entDepth(center(o.y))));
       return;
     }
-    const flat = d.type === 'plate' || d.type === 'spikes' || (d.type === 'decor' && !d.solid) || d.type === 'sconce' || d.type === 'arrowtrap';
+    const flat = d.type === 'plate' || d.type === 'spikes' || d.type === 'vent' || (d.type === 'decor' && !d.solid) || d.type === 'sconce' || d.type === 'arrowtrap';
     const f = this.objFrame(o);
     const spr = this.add.image(center(o.x), center(o.y), 'objects', Math.max(0, f)).setVisible(f >= 0);
     spr.setDepth(flat ? DEPTH.floor : entDepth(center(o.y)));
@@ -1102,7 +1339,7 @@ export class GameScene extends Phaser.Scene {
   applyGateChanges(changed: Obj[]): void {
     if (!changed.length) return;
     for (const o of changed) {
-      if (o.def.type === 'hidden') this.setTile(o.x, o.y, o.open ? T.CaveFloor : T.CaveWall);
+      if (o.def.type === 'hidden') this.setTile(o.x, o.y, this.world.hiddenTile(o, o.open));
       else this.refreshObjSprite(o);
     }
     audio.sfx('door');
@@ -1160,6 +1397,23 @@ export class GameScene extends Phaser.Scene {
       } else this.solvePuzzle(p, 'Something unlocks nearby.');
     }
     this.applyGateChanges(w.syncGates());
+  }
+
+  /** A sluice wheel: every turn takes its channel from high water to low or back. */
+  private turnValve(o: Obj): void {
+    const w = this.world;
+    const ch = o.def.channel!;
+    if (this.valveT > this.clock) return;
+    this.valveT = this.clock + 700;
+    const low = !w.low.has(ch);
+    const changed = w.setWater(ch, low);
+    for (const v of w.objs) if (v.def.type === 'valve' && v.def.channel === ch) this.refreshObjSprite(v);
+    audio.sfx('lever');
+    audio.sfx('valve');
+    this.cameras.main.shake(180, 0.003);
+    this.applyTiles(changed);
+    this.updateVision(true);
+    G.hooks.toast(low ? 'The wheel groans. Somewhere close, water drains away.' : 'The wheel groans. The water comes back up.', 'info');
   }
 
   private lightBrazier(o: Obj): void {
@@ -1234,6 +1488,7 @@ export class GameScene extends Phaser.Scene {
       else if (t === 'shrine' && !o.open) label = 'Pray at the shrine';
       else if (t === 'pedestal' && !o.open) label = `Take ${ITEMS[o.item!].name}`;
       else if (t === 'sconce') label = 'Examine torch';
+      else if (t === 'valve') label = this.world.low.has(o.def.channel!) ? 'Turn the wheel: raise the water' : 'Turn the wheel: lower the water';
       else if (t === 'block' && !this.world.solved(o.def.puzzle ?? '')) label = 'Send the stone back';
       else if (t === 'door' && !o.open) label = r.keys.includes(o.def.key!) ? `Unlock (${o.def.key} key)` : `Locked: needs the ${o.def.key} key`;
       else if (t === 'gate' && !o.open) label = 'Examine gate';
@@ -1295,6 +1550,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'lever':
         this.pullLever(o);
+        break;
+      case 'valve':
+        this.turnValve(o);
         break;
       case 'brazier':
         this.lightBrazier(o);
@@ -1433,6 +1691,17 @@ export class GameScene extends Phaser.Scene {
           spr?.setFrame(up ? O.SpikesUp : O.SpikesDown);
         }
         if (up && !h.dead && tx(h.x) === o.x && tx(h.y) === o.y) this.hurtHero(this.stats.trapDmg + this.tier.trapDmg, h.x, h.y + 4, { knock: 0 });
+      } else if (d.type === 'vent' && o.exists) {
+        // a gas vent breathes out a poison cloud at the start of every cycle
+        const period = d.period ?? 3800;
+        const before = o.timer;
+        o.timer = (o.timer + dt) % period;
+        const up = o.timer < period * 0.34;
+        if (up !== o.up) {
+          o.up = up;
+          spr?.setFrame(up ? O.VentOn : O.VentOff);
+        }
+        if (o.timer < before && Math.hypot(center(o.x) - h.x, center(o.y) - h.y) < 14 * TILE) this.addCloud(center(o.x), center(o.y), 19, period * 0.34);
       } else if (d.type === 'arrowtrap' && o.exists) {
         o.timer += dt;
         if (o.timer >= (d.period ?? 1500)) {
@@ -1445,6 +1714,94 @@ export class GameScene extends Phaser.Scene {
       }
     }
     for (const [g, spr] of this.groundSpr) spr.setY(g.y + Math.sin(this.clock / 350 + g.x) * 1.2);
+    // floors that are giving way
+    const fell = w.updateCrumble(dt);
+    if (fell.length) {
+      for (const c of fell) {
+        if (c.t !== w.def.tiles[c.i]) this.fx(c.t === T.Murk ? F.Splash : F.Poof0, center(c.i % w.w), center(Math.floor(c.i / w.w)), 320);
+      }
+      if (fell.some((c) => c.t !== w.def.tiles[c.i])) audio.sfx(fell[0].t === T.Murk ? 'splash' : 'crumble');
+      this.applyTiles(fell);
+    }
+  }
+
+  // ------------------------------------------------------------------ clouds and whirlpools
+
+  /** Hangs a cloud of poison in the air. */
+  addCloud(x: number, y: number, r: number, ms: number): void {
+    this.clouds.push({ x, y, r, t: ms, puff: 0 });
+  }
+
+  /** Runs and draws what lingers in the world: poison clouds, and whirlpools of either side. */
+  private updateHazards(dt: number): void {
+    const h = this.hero!;
+    const g = this.tele;
+    const w = this.world;
+    const seen = (x: number, y: number) => !!w.visible[w.idx(tx(x), tx(y))];
+    for (const c of this.clouds) {
+      c.t -= dt;
+      c.puff -= dt;
+      const vis = seen(c.x, c.y);
+      if (vis) {
+        g.fillStyle(0x7fd04a, 0.16);
+        g.fillCircle(c.x, c.y, c.r);
+      }
+      if (c.puff <= 0) {
+        c.puff = 170;
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * c.r * 0.8;
+        if (vis) this.fx(Math.random() < 0.5 ? F.Gas0 : F.Gas1, c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, 520);
+      }
+      if (!h.dead && Math.hypot(h.x - c.x, h.y - c.y) < c.r + 2) this.poisonHero(3500);
+    }
+    this.clouds = this.clouds.filter((c) => c.t > 0);
+
+    const swirl = (x: number, y: number, r: number, color: number, life: number) => {
+      const k = Math.min(1, life / 400);
+      g.fillStyle(color, 0.14 * k);
+      g.fillCircle(x, y, r);
+      g.lineStyle(1, color, 0.7 * k);
+      for (let n = 0; n < 3; n++) {
+        const rr = r * (0.35 + n * 0.3);
+        const a = -this.clock / (140 + n * 60) + n * 2;
+        g.beginPath();
+        g.arc(x, y, rr, a, a + 2.2);
+        g.strokePath();
+      }
+    };
+    for (const p of this.pools) {
+      p.t -= dt;
+      p.tick -= dt;
+      if (seen(p.x, p.y)) swirl(p.x, p.y, POOL.r, 0x9fe8ff, p.t);
+      const bite = p.tick <= 0;
+      if (bite) p.tick = POOL.tick;
+      for (const m of this.mons) {
+        const d = Math.hypot(m.x - p.x, m.y - p.y);
+        if (m.dead || d > POOL.r + m.r || m.def.ai === 'generator') continue;
+        if (!m.boss && d > 3) {
+          // dragged in and held: it wades against the pull, slowly
+          const step = (Math.min(POOL.pull, d * 6) * dt) / 1000;
+          this.moveBody(m, ((p.x - m.x) / d) * step, ((p.y - m.y) / d) * step, 4, m.def.ai === 'flyer' || m.def.ai === 'wisp');
+          m.slowT = Math.max(m.slowT, 250);
+        }
+        if (bite) damageMon(this, m, p.dmg, 0, 0);
+      }
+    }
+    this.pools = this.pools.filter((p) => p.t > 0);
+
+    for (const v of this.vortices) {
+      v.t -= dt;
+      v.tick -= dt;
+      swirl(v.x, v.y, VORTEX.r, 0xff5040, v.t);
+      const d = Math.hypot(h.x - v.x, h.y - v.y);
+      if (h.dead || h.dash || h.stoneT > 0 || d > VORTEX.r) continue;
+      if (d > 2) {
+        const step = (VORTEX.pull * dt) / 1000;
+        this.moveBody(h, ((v.x - h.x) / d) * step, ((v.y - h.y) / d) * step, HERO_R, false);
+      }
+      if (d < VORTEX.eye && v.tick <= 0 && this.hurtHero(v.dmg, v.x, v.y, { knock: 0 })) v.tick = VORTEX.tick;
+    }
+    this.vortices = this.vortices.filter((v) => v.t > 0);
   }
 
   // ------------------------------------------------------------------ pickups and effects
@@ -1502,6 +1859,7 @@ export class GameScene extends Phaser.Scene {
         } else {
           const heal = p.value + this.stats.heartBonus;
           rh.hp = Math.min(this.stats.maxHp, rh.hp + heal);
+          h.poisonT = 0; // a heart clears poison
           audio.sfx('heart');
           this.number(h.x, h.y - 10, heal, 0x7be06a);
         }
@@ -1531,7 +1889,7 @@ export class GameScene extends Phaser.Scene {
 
   lightRadius(): number {
     const h = this.hero!;
-    return this.stats.light + (this.world.isCave(tx(h.x), tx(h.y)) ? 0 : 2);
+    return this.stats.light + (this.world.indoor(tx(h.x), tx(h.y)) ? 0 : 2);
   }
 
   updateVision(force: boolean): void {

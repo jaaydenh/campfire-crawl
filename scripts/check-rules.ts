@@ -2,13 +2,15 @@
 import assert from 'node:assert/strict';
 import { T } from '../src/art/manifest';
 import { getMap } from '../src/data/maps';
-import { CHIEF_PHASES, MONSTERS } from '../src/data/monsters';
-import { TIERS, scaleDmg, scaleHp, spawnOn, tierDef, tierMonster } from '../src/data/tiers';
+import { BOSS_PHASES, CHIEF_PHASES, GENERATOR_SPAWN, MONSTERS } from '../src/data/monsters';
+import { TIERS, scaleDmg, scaleHp, spawnOn, tierDef, tierMonster, tierOnMap } from '../src/data/tiers';
+import { MUSIC } from '../src/audio/audio';
+import { MASONRY, PIT_TILES, wallKind } from '../src/world/mapdef';
 import { SHEETS } from '../src/art/manifest';
 import { PATHS, UPGRADE, UPGRADES, upgradeDepth } from '../src/data/upgrades';
 import { ITEMS, ITEM_LIST, STARTER_POOL, STARTER_WEAPON, isLastingWeapon, newStack } from '../src/data/items';
 import { MELEE_CONE, RANGED_CONE, leadAngle, pickTarget } from '../src/game/aim';
-import { World } from '../src/game/world';
+import { CRUMBLE, World } from '../src/game/world';
 import { ARROW_DROP_CHANCE, ARROW_MAX, ARROW_PILE, BASE_IFRAMES, BASE_PULL, FEATS, KIT_OFFER_SIZE, clearFeat, everCleared, featsOpen, pedestalItem, pinSlots, runTier, tierClears, tierUnlocked, KIT_ROLES, PROWESS_START, campRest, comebackHp, heroFell, rescueFallen, addArrows, buyUpgrade, discoverItem, kitChoices, kitPrice, kitRole, mergeBits, outfit, pinsOf, prowess, rerollBlock, rerollKit, rerollPrice, setPin, shopPrice, upgradeCost, upgradeLock, advanceTurn, bowEquipped, fillMissingCharges, createRun, finishRun, giveItem, heroStats, kitCost, kitOffer, packBits, rollChest, knowledgeOf, prizeTaken, setFlag, shopStock, takePrize, toggleKitItem, trimKit, unpackBits } from '../src/run';
 import { newSave, parseSave } from '../src/save';
 import { controlsOf } from '../src/types';
@@ -412,10 +414,11 @@ assert.equal(tierDef(9).tier, 1);
   assert.equal(MONSTERS.wolf.hp, 8, 'the base table is untouched');
   for (const m of Object.values(MONSTERS)) {
     if (m.dmg > 0) assert.ok(tierMonster(m, t1).dmg >= 1, `${m.id} still hurts on tier 1`);
-    // the starter sword hits for 4: on the lowest tier nothing but the boss takes more than three swings
-    const variant = Object.values(t3.variants).some(([id]) => id === m.id); // never met on tier 1
-    if (m.ai !== 'boss' && m.ai !== 'generator' && !variant) assert.ok(Math.ceil(tierMonster(m, t1).hp / 4) <= 3, `${m.id} falls to three sword hits on tier 1`);
   }
+  // the starter sword hits for 4: on map 1's lowest tier nothing but the boss takes more than three swings.
+  // (Map 2 is for heroes who have been to camp a few times: its monsters are not held to this.)
+  const onMap1 = new Set(getMap('map1', 1).spawns.filter((sp) => !sp.minTier).flatMap((sp) => sp.options.map((id) => GENERATOR_SPAWN[id] ?? id)));
+  for (const id of onMap1) assert.ok(Math.ceil(tierMonster(MONSTERS[id], t1).hp / 4) <= 3, `${id} falls to three sword hits on tier 1`);
   assert.deepEqual(CHIEF_PHASES.map((h) => scaleHp(h, t1)), [40, 44, 52]);
   assert.deepEqual([scaleDmg(6, t1), scaleDmg(6, t2), scaleDmg(6, t3)], [5, 8, 10], "the Chief's cleave");
 }
@@ -604,7 +607,8 @@ assert.equal(tierDef(9).tier, 1);
   assert.deepEqual(only(m3).map((id) => ITEMS[id].rarity), [3, 3]);
   assert.deepEqual([...only(m2), ...only(m3)].sort(), ['berserk', 'dawn', 'ember', 'kingsplitter']);
   assert.deepEqual(['ember', 'dawn', 'kingsplitter', 'berserk'].map((id) => kitRole(ITEMS[id])), ['weapon', 'weapon', 'weapon', 'passive']);
-  assert.ok(ITEM_LIST.filter((d) => d.rarity === 3).every((d) => d.kit === 8), 'a hero with every feat of one map can start with one legendary');
+  assert.ok(['dawn', 'kingsplitter'].every((id) => ITEMS[id].kit === 8), 'a hero with every feat of map 1 can start with one of its legendaries');
+  assert.ok(ITEM_LIST.filter((d) => d.rarity === 3).every((d) => d.kit >= 8 && d.kit <= 10), 'a legendary costs 8 to 10 Prowess');
 }
 
 // the Veteran secrets work: the slab answers to the plate, the far lever cannot be walked to
@@ -689,13 +693,13 @@ assert.equal(tierDef(9).tier, 1);
 // a variant is the same kind of monster as the one it replaces, with one thing of its own and its own look
 {
   for (const m of Object.values(MONSTERS)) if (m.sheet !== 'objects') assert.ok(SHEETS[m.sheet], `${m.id} has a sprite sheet`);
-  assert.deepEqual(TIERS.map((t) => Object.keys(t.variants).length), [0, 2, 4], 'none on tier 1, two kinds on tier 2, four on tier 3');
+  assert.deepEqual(TIERS.map((t) => Object.keys(t.variants).length), [0, 4, 8], 'none on tier 1; on tier 2 two kinds for each map built, on tier 3 four');
   for (const t of TIERS)
     for (const [base, [id, chance]] of Object.entries(t.variants)) {
       const [b, v] = [MONSTERS[base], MONSTERS[id]];
       assert.ok(b && v && v.ai === b.ai, `${id} behaves like ${base}`);
       assert.ok(v.sheet !== b.sheet && v.hp > b.hp && v.dmg >= b.dmg, `${id} looks different and is tougher`);
-      assert.ok(v.split || v.lunges || v.volley || v.heavy, `${id} has a trick of its own`);
+      assert.ok(v.split || v.lunges || v.volley || v.heavy || v.cloud || v.sparks || v.thrust?.combo, `${id} has a trick of its own`);
       assert.ok(chance > 0 && chance < 1);
       assert.ok(!TIERS[t.tier - 2] || (TIERS[t.tier - 2].variants[base]?.[1] ?? 0) <= chance, 'more common on the higher tier');
     }
@@ -718,8 +722,9 @@ assert.equal(tierDef(9).tier, 1);
   assert.ok(per(2) > 3 && per(2) < 9, `about a handful on tier 2: ${per(2)}`);
   assert.ok(per(3) > 2 * per(2) && per(3) < 30, `and many more on tier 3: ${per(3)}`);
   // the boss: no added attack on tier 1, a slam on tier 2, a slam and a leap on tier 3
-  assert.deepEqual(TIERS.map((t) => t.bossMoves), [[], ['slam'], ['slam', 'leap']]);
-  for (const t of TIERS) for (const id of t.bossHelp.flat()) assert.ok(MONSTERS[id], `${id} can be called in`);
+  assert.deepEqual(TIERS.map((t) => t.bossMoves.chief), [[], ['slam'], ['slam', 'leap']]);
+  assert.deepEqual(TIERS.map((t) => t.bossMoves.priest), [[], ['pool'], ['pool', 'wave']]);
+  for (const t of TIERS) for (const id of Object.values(t.bossHelp).flat(2)) assert.ok(MONSTERS[id], `${id} can be called in`);
 }
 
 // ---------------------------------------------------------------- upgrade tree
@@ -915,5 +920,127 @@ assert.equal(pickTarget([ahead, diag], 0, 0, 0, 100, MELEE_CONE, (m) => m !== ah
 assert.equal(leadAngle(100, 0, 0, 0, 200), 0, 'a still target is shot at directly');
 assert.ok(Math.abs(leadAngle(100, 0, 0, 40, 200) - Math.atan2(20, 100)) < 1e-9, 'a moving one is led by its travel during the flight');
 assert.ok(Math.abs(leadAngle(1000, 0, 0, 40, 200) - Math.atan2(20, 1000)) < 1e-9, 'the lead never looks more than half a second ahead');
+
+// ---------------------------------------------------------------- map 2: the Drowned Mire
+
+{
+  const maps = [1, 2, 3].map((t) => getMap('map2', t));
+  const [d1, d2, d3] = maps;
+  // seven sections and six campfires on every tier, the halfway campfire at the temple gate
+  for (const m of maps) {
+    assert.equal(m.sectionNames.length, 7);
+    assert.equal(m.checkpoints.length, 7, 'the start and six campfires');
+    assert.equal(Math.ceil((m.checkpoints.length - 1) / 2), 3);
+    assert.equal(m.boss.type, 'priest');
+    assert.ok(MUSIC[m.music.outdoor] && MUSIC[m.music.indoor], 'its music exists');
+    assert.equal(new Set(m.spawns.map((sp) => sp.id)).size, m.spawns.length, 'spawn ids are unique');
+    assert.equal(new Set(m.secrets.map((x) => x.id)).size, m.secrets.length);
+    assert.ok(m.objects.every((o) => !o.secret || m.secrets.some((x) => x.id === o.secret)), "no object belongs to another tier's secret");
+    for (const x of m.secrets) assert.ok(m.objects.some((o) => o.type === 'pedestal' && o.secret === x.id), `${x.id} has a prize`);
+    for (const sp of m.spawns) for (const id of sp.options) assert.ok(MONSTERS[id], `${id} is a monster`);
+    // the layout is the same on every tier, away from the secrets
+    assert.deepEqual(m.checkpoints, d1.checkpoints);
+    assert.equal(m.indoor[58 * m.w + 140], 1, 'the temple is indoors');
+    assert.equal(m.indoor[16 * m.w + 10], 0, 'the swamp is not');
+  }
+  assert.deepEqual(maps.map((m) => m.secrets.length), [3, 2, 2]);
+  assert.deepEqual(maps.map((m) => m.clearUnlocks), [['blowpipe', 'firebolt'], ['leechring'], ['crown']]);
+  assert.deepEqual([d2, d3].map((m) => m.objects.filter((o) => o.type === 'pedestal' && o.item).map((o) => ITEMS[o.item!].rarity)), [[2], [3]], 'a rare on Veteran, a legendary on Legend');
+  // every item that is not in a new save's pool can be found somewhere
+  const findable = new Set(['map1', 'map2'].flatMap((id) => [1, 2, 3].flatMap((t) => [...getMap(id, t).clearUnlocks, ...getMap(id, t).objects.filter((o) => o.item).map((o) => o.item!)])));
+  for (const d of ITEM_LIST) assert.ok(d.starter || findable.has(d.id), `${d.name} can be found on some map`);
+  // monsters: the shared roster keeps its ids, tier 1 has no generator, the higher tiers add to the packs
+  const shared = d1.spawns.filter((sp) => !sp.minTier);
+  assert.deepEqual(shared.map((sp) => sp.id), shared.map((_, i) => `m${i}`));
+  for (let seed = 1; seed <= 40; seed++) {
+    const roster = (tier: number) => d1.spawns.map((sp) => spawnOn(sp, seed * 104729, TIERS[tier - 1])).filter((x): x is string => !!x);
+    assert.equal(roster(1).length, shared.length);
+    assert.equal(roster(1).filter((id) => MONSTERS[id].ai === 'generator').length, 0, 'no clutch or coffin on tier 1');
+    assert.ok(roster(2).some((id) => id === 'clutch') && roster(2).some((id) => id === 'coffin'));
+    assert.ok(roster(2).length > roster(1).length + 8 && roster(3).length > roster(2).length + 8);
+    assert.ok(roster(1).every((id) => !['bloat', 'gravelight', 'stalker', 'witch'].includes(id)), 'no variants on tier 1');
+  }
+  // its monsters are tougher than the table says: tier 1 here sits about halfway between map 1's tiers 1 and 2
+  const here = tierOnMap(TIERS[0], d1.scale);
+  assert.ok(here.hp > TIERS[0].hp && here.hp < TIERS[1].hp && here.dmg > TIERS[0].dmg && here.dmg < TIERS[1].dmg);
+  assert.equal(tierOnMap(TIERS[0], getMap('map1').scale), TIERS[0], 'map 1 is the table as written');
+  assert.deepEqual([tierMonster(MONSTERS.toad, here).hp, tierMonster(MONSTERS.toad, TIERS[0]).hp], [11, 9], 'and the two are not mixed up');
+  assert.equal(BOSS_PHASES.priest.length, 3);
+  for (const id of Object.values(GENERATOR_SPAWN)) assert.ok(MONSTERS[id]);
+
+  // the water: a wheel takes its channel from high to low and back, and every turn starts it where it began
+  const s = newSave();
+  s.heroes.push({ name: 'Wade', color: 0, renown: 0, upgrades: {}, kit: [null, null, null, null] });
+  s.mapsUnlocked = 2;
+  const r = createRun(s, [0], 'map2');
+  const w2 = new World(d1, r, s);
+  const at = (x: number, y: number) => w2.tiles[w2.idx(x, y)];
+  assert.ok(at(140, 73) === T.Flood && !w2.walkable(140, 73) && w2.deep(140, 73), 'the court is flooded');
+  assert.ok(at(157, 72) === T.Raft && w2.walkable(157, 72), 'and the rafts ride');
+  const changed = w2.setWater('court', true);
+  assert.ok(changed.length > 60 && at(140, 73) === T.Drained && w2.walkable(140, 73), 'low water: the channel is floor');
+  assert.ok(w2.pit(157, 72) && !w2.walkable(157, 72), 'and the rafts lie at the bottom of their shaft');
+  assert.ok(w2.objs.filter((o) => o.def.type === 'valve' && o.def.channel === 'court').every((o) => o.on), 'both wheels show it');
+  assert.equal(w2.setWater('court', true).length, 0, 'nothing changes twice');
+  assert.ok(w2.resetWater().length > 60 && at(140, 73) === T.Flood && at(157, 72) === T.Raft, 'a new turn puts the water back');
+  // the sluice hall can only be crossed in the right order: the moat down, the weir down, then the moat up again from the far side
+  assert.ok(!w2.walkable(84, 78) && !w2.walkable(65, 80) && w2.walkable(74, 80) && w2.walkable(89, 72));
+  w2.setWater('moat', true);
+  assert.ok(w2.walkable(84, 78) && !w2.walkable(74, 80), 'the moat down opens the middle and drops the far rafts');
+  w2.setWater('weir', true);
+  assert.ok(w2.walkable(65, 80) && !w2.walkable(89, 72), 'the weir down opens the way out and drops the rafts to the first wheel');
+  w2.setWater('moat', false);
+  assert.ok(w2.walkable(74, 80) && w2.walkable(65, 80), 'the moat up again: the far rafts ride and the way out is still open');
+  w2.resetWater();
+
+  // floors that give way: a rotten raft sinks a moment after it is stepped on, and comes back
+  assert.equal(at(84, 20), T.Sinking);
+  assert.ok(w2.stepCrumble(84, 20) && !w2.stepCrumble(84, 20), 'stepping on it starts it going, once');
+  assert.equal(w2.updateCrumble(CRUMBLE.shake - 10).length, 0, 'it holds for a moment');
+  assert.deepEqual(w2.updateCrumble(20).map((c) => c.t), [T.Murk]);
+  assert.ok(!w2.walkable(84, 20) && w2.deep(84, 20));
+  assert.deepEqual(w2.updateCrumble(CRUMBLE.gone + 10).map((c) => c.t), [T.Sinking], 'and bobs back up');
+  assert.ok(w2.stepCrumble(52, 80) && w2.updateCrumble(CRUMBLE.shake + 10).every((c) => PIT_TILES.has(c.t)), 'a cracked slab leaves a drop');
+  assert.ok(w2.resetCrumble().length === 1 && at(52, 80) === T.Crumble);
+  assert.ok(!w2.stepCrumble(60, 80), 'sound floor does not give way');
+
+  // the sanctum floods as the Priest's guard breaks, and drains when he falls
+  const flood = d1.boss.flood!;
+  assert.equal(flood.length, BOSS_PHASES.priest.length - 1, 'one flood for each break');
+  const ring = w2.floodArena(1);
+  assert.equal(ring.length, flood[0].length);
+  assert.ok(w2.bog(5, 94) && !w2.bog(13, 104), 'the outer ring is under water; the middle is dry');
+  w2.floodArena(2);
+  assert.ok(w2.bog(13, 99) && !w2.bog(13, 104) && !w2.bog(10, 100), 'then all of it but the middle and the stone round each pillar');
+  assert.ok(flood.flat().every((i) => d1.tiles[i] !== T.TempleWall && d1.tiles[i] !== T.TempleWallFace), 'the pillars stay stone');
+  assert.ok(d1.boss.anchors!.every((a) => w2.walkable(a.x, a.y)), 'he can rise on every one of his places, flooded or not');
+  assert.ok(w2.floodArena(0).length > 0 && !w2.bog(5, 94));
+
+  // a hidden wall in the temple opens to flagstones, and one in the swamp's rock to cave floor
+  const w3 = new World(d2, createRun(s, [0], 'map2', 1), s);
+  const idol = w3.objs.find((o) => o.def.type === 'hidden' && o.def.puzzle === 'idol')!;
+  assert.ok(wallKind(w3.hiddenTile(idol, false)) === MASONRY && w3.hiddenTile(idol, true) === T.TempleFloor);
+  const shore = w3.objs.find((o) => o.def.type === 'hidden' && o.def.puzzle === 'farshore')!;
+  assert.equal(w3.hiddenTile(shore, true), T.CaveFloor);
+  assert.ok(!w3.walkable(72, 26) && w3.objAt(72, 27, 'lever'), 'the far lever stands in deep water');
+
+  // the passives found here
+  const rh = r.heroes[0];
+  const flags = (id: string) => {
+    rh.passive = { id };
+    const st = heroStats(s, rh);
+    return [st.antivenom, st.waders, st.leech, st.wisp].map(Number).join('');
+  };
+  assert.deepEqual(['antivenom', 'waders', 'leechring', 'wisplantern', 'lantern'].map(flags), ['1000', '0100', '0010', '0001', '0000']);
+  assert.equal(heroStats(s, rh).light, heroStats(s, { ...rh, passive: { id: 'wisplantern' } }).light, 'the wisp lights as far as a lantern');
+  assert.deepEqual(['blowpipe', 'tide', 'crown', 'stoneskin'].map((id) => kitRole(ITEMS[id])), ['weapon', 'weapon', 'weapon', 'active']);
+
+  // clearing map 2 on a tier earns its own feats
+  s.run = r;
+  r.checkpoint = 3;
+  const half = finishRun(s, false, [], 3);
+  assert.deepEqual(s.heroes[0].feats, ['half:map2'], 'the temple gate is the halfway campfire');
+  assert.deepEqual(half.rows[0].feats, [FEATS.half]);
+}
 
 console.log('All rule checks passed');

@@ -478,8 +478,120 @@ const BOSS = makeTrack(164, 'A minor', 16, [
   drumCh(0.28, [...BOSS_DRUMS_A, ...BOSS_DRUMS_A, ...BOSS_DRUMS_B]),
 ]);
 
+// --- swamp: slow and lurching, E minor with a flat second, 4/4, 16 bars -----
+
+const SWAMP_CHORDS = 'Em Em C B Em Em Am B Em D C B Am Em F B';
+
+const SWAMP_LEAD = [
+  'E4:4 G4:2 B4:6 -:4',
+  '-:4 A4:2 G4:2 E4:8',
+  'C5:6 B4:2 G4:4 E4:4',
+  'F#4:4 D#4:4 B3:8',
+  'E4:2 -:2 E4:2 G4:2 B4:4 D5:4',
+  'C5:2 B4:2 G4:4 E4:8',
+  'A4:4 C5:4 E5:6 -:2',
+  'D#5:4 B4:4 F#4:8',
+  'E5:6 D5:2 B4:4 G4:4',
+  'A4:6 F#4:2 D4:8',
+  'G4:4 E4:4 C4:6 -:2',
+  'B3:4 D#4:4 F#4:4 B4:4',
+  'A4:2 -:2 A4:2 C5:2 E5:8',
+  'B4:4 G4:4 E4:8',
+  'F4:6 A4:2 C5:4 F5:4',
+  'D#5:4 B4:4 F#4:4 B3:4',
+];
+
+/** Squelching bass: a heavy root, a short repeat, the fifth, and the root again. */
+const squelch = (r: string, f: string): string => `${r}:3 -:1 ${r}:2 -:2 ${f}:3 -:1 ${r}:4`;
+const SWAMP_BASS: Record<string, string> = {
+  Em: squelch('E2', 'B2'),
+  C: squelch('C3', 'G2'),
+  B: squelch('B2', 'F#2'),
+  Am: squelch('A2', 'E3'),
+  D: squelch('D3', 'A2'),
+  F: squelch('F2', 'C3'),
+};
+
+/** Two croaks off the beat, twice a bar. */
+const croak = (a: string, b: string): string => `-:2 ${a}:1 ${a}:1 -:4 -:2 ${b}:1 ${b}:1 -:4`;
+const SWAMP_CROAK: Record<string, string> = {
+  Em: croak('G3', 'B3'),
+  C: croak('G3', 'C4'),
+  B: croak('F#3', 'B3'),
+  Am: croak('A3', 'C4'),
+  D: croak('F#3', 'A3'),
+  F: croak('A3', 'C4'),
+};
+
+const S_ONE = 'k.....h.s.....h.';
+const S_TOM = 'k.....h.s...t.t.';
+const SWAMP_DRUMS = [S_ONE, S_ONE, S_ONE, S_TOM, S_ONE, S_ONE, S_ONE, S_TOM, S_ONE, S_ONE, S_ONE, S_TOM, S_ONE, S_ONE, S_TOM, S_TOM];
+
+const SWAMP = makeTrack(92, 'E minor', 16, [
+  toneCh('lead', { wave: 'p50', vol: 0.12, gate: 0.85, sus: 0.5, echo: [4, 0.25] }, SWAMP_LEAD),
+  toneCh('croak', { wave: 'p12', vol: 0.06, gate: 0.5, sus: 0.2 }, byChord(SWAMP_CHORDS, SWAMP_CROAK)),
+  toneCh('bass', { wave: 'tri', vol: 0.38, gate: 0.85, sus: 0.7 }, byChord(SWAMP_CHORDS, SWAMP_BASS)),
+  drumCh(0.2, SWAMP_DRUMS),
+]);
+
+// --- temple: a slow drowned chant, B minor, 3/4 (12 steps per bar), 16 bars --
+
+const TEMPLE_CHORDS = 'Bm Bm G F# Bm Bm Em F# D A G F# Em Bm G F#';
+
+const TEMPLE_LEAD = [
+  'B4:6 D5:6',
+  'F#5:8 E5:4',
+  'D5:6 B4:6',
+  'A#4:8 C#5:4',
+  'B4:4 D5:4 F#5:4',
+  'B5:8 A5:4',
+  'G5:6 E5:6',
+  'F#5:12',
+  'A5:6 F#5:6',
+  'E5:8 C#5:4',
+  'D5:6 B4:6',
+  'C#5:8 A#4:4',
+  'E5:4 G5:4 B5:4',
+  'F#5:8 D5:4',
+  'G5:6 B4:6',
+  'A#4:6 F#4:6',
+];
+
+/** A held root, then the fifth. */
+const drone = (r: string, f: string): string => `${r}:8 ${f}:4`;
+const TEMPLE_BASS: Record<string, string> = {
+  Bm: drone('B2', 'F#3'),
+  G: drone('G2', 'D3'),
+  'F#': drone('F#2', 'C#3'),
+  Em: drone('E2', 'B2'),
+  D: drone('D3', 'A2'),
+  A: drone('A2', 'E3'),
+};
+
+/** Two bells a bar, high and far away. */
+const bells = (a: string, b: string): string => `-:4 ${a}:2 -:2 ${b}:2 -:2`;
+const TEMPLE_BELLS: Record<string, string> = {
+  Bm: bells('B5', 'F#5'),
+  G: bells('B5', 'G5'),
+  'F#': bells('A#5', 'F#5'),
+  Em: bells('G5', 'E5'),
+  D: bells('A5', 'F#5'),
+  A: bells('A5', 'E5'),
+};
+
+const T_TOLL = 't...........';
+const T_STEP = 'k.....h.....';
+const TEMPLE_DRUMS = [T_TOLL, T_STEP, T_STEP, T_STEP, T_TOLL, T_STEP, T_STEP, T_STEP, T_TOLL, T_STEP, T_STEP, T_STEP, T_TOLL, T_STEP, T_STEP, T_TOLL];
+
+const TEMPLE = makeTrack(84, 'B minor', 12, [
+  toneCh('lead', { wave: 'tri', vol: 0.2, gate: 0.95, sus: 0.8, layer: { wave: 'p25', vol: 0.04, semis: 12 } }, TEMPLE_LEAD),
+  toneCh('bells', { wave: 'p12', vol: 0.05, gate: 0.4, sus: 0.15, echo: [3, 0.4] }, byChord(TEMPLE_CHORDS, TEMPLE_BELLS)),
+  toneCh('bass', { wave: 'tri', vol: 0.36, gate: 0.95, sus: 0.85 }, byChord(TEMPLE_CHORDS, TEMPLE_BASS)),
+  drumCh(0.2, TEMPLE_DRUMS),
+]);
+
 /** Exported for tooling and tests; the game only needs `audio`. */
-export const MUSIC: Record<MusicTrack, TrackData> = { hub: HUB, forest: FOREST, cave: CAVE, boss: BOSS };
+export const MUSIC: Record<MusicTrack, TrackData> = { hub: HUB, forest: FOREST, cave: CAVE, swamp: SWAMP, temple: TEMPLE, boss: BOSS };
 
 // ---------------------------------------------------------------------------
 // Engine
@@ -815,6 +927,31 @@ const SFX: Record<SfxName, (x: Fx) => void> = {
     N(x, 'lowpass', 2400, 0, 0.6, 0.7, { f2: 90, s: 0.15 });
     T(x, 'tri', 130, 0, 0.45, 0.6, { f2: 32, s: 0.3 });
     T(x, 'p50', 90, 0, 0.25, 0.16, { f2: 40 });
+  },
+
+  // --- water, gas and stone (map 2) ---
+  splash: (x) => {
+    N(x, 'lowpass', 2200, 0, 0.38, 0.5, { f2: 320, s: 0.2 });
+    T(x, 'tri', 320, 0, 0.2, 0.2, { f2: 90 });
+    N(x, 'highpass', 4200, 0.04, 0.22, 0.1, { s: 0.2 });
+  },
+  poison: (x) => {
+    N(x, 'highpass', 2800, 0, 0.45, 0.16, { f2: 6500, a: 0.04, s: 0.4 });
+    T(x, 'p12', 233 * x.k, 0, 0.3, 0.08, { f2: 165, vib: [14, 8] });
+  },
+  zap: (x) => {
+    T(x, 'saw', 1900 * x.k, 0, 0.11, 0.12, { f2: 320 });
+    T(x, 'p12', 2600, 0.02, 0.08, 0.07, { f2: 900, s: 0.2 });
+    N(x, 'highpass', 5000, 0, 0.1, 0.14, { s: 0.2 });
+  },
+  crumble: (x) => {
+    N(x, 'lowpass', 900, 0, 0.42, 0.45, { f2: 150, s: 0.3 });
+    T(x, 'p50', 110, 0, 0.3, 0.14, { f2: 48 });
+    N(x, 'bandpass', 1800, 0.08, 0.12, 0.16, { q: 2, s: 0.2 });
+  },
+  valve: (x) => {
+    N(x, 'bandpass', 520, 0.1, 1.1, 0.34, { f2: 1500, q: 0.8, a: 0.15, s: 0.5 });
+    T(x, 'tri', 82, 0, 0.5, 0.3, { f2: 60, s: 0.7 });
   },
 
   // --- deaths ---

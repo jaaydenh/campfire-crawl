@@ -101,6 +101,9 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .maprow b { overflow: hidden; text-overflow: ellipsis; }
 .maprow.locked { opacity: 0.45; }
 .maprow.open { border-left: 5px solid var(--gold); }
+.maprow[data-act] { cursor: pointer; }
+.maprow[data-act]:hover { filter: brightness(1.25); }
+.maprow.sel { outline: 2px solid var(--gold); background: var(--panel); }
 .tiers { display: grid; gap: 3px; margin: 5px 0; }
 .runbox { flex-shrink: 0; }
 .runbox p { margin: 4px 0; }
@@ -165,6 +168,7 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .hpbar { position: relative; height: 22px; background: #2a0f12; border: 3px solid #000; outline: 2px solid var(--line); }
 .hpfill { position: absolute; left: 0; top: 0; bottom: 0; background: #5fc24f; transition: width 0.15s; }
 .hpbar span { position: relative; display: block; text-align: center; font-size: 15px; line-height: 16px; }
+.hpbar .ico.sm { width: 16px; height: 16px; background-size: auto 16px; background-position: calc(var(--i) * -16px) 0; margin-right: 2px; vertical-align: top; }
 /* comeback health: a gold strip along the bottom of the bar, gone once it is used up.
    It lies over the fill from the left, not after it: it takes damage first, so the bar under it is full. */
 .hpbonus { position: absolute; left: 0; bottom: 0; height: 5px; background: #f2c84b; transition: width 0.15s; }

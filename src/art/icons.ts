@@ -2,6 +2,7 @@
 
 import { IC } from './manifest';
 import { type Img, line, ol, outline, recolour, shift, spr } from './draw';
+import { addMireIcons } from './mire';
 
 const FISTS = `
 ................
@@ -673,5 +674,6 @@ export function buildIcons(): Img[] {
   i[IC.Berserk] = ol('Berserk', BERSERK);
   i[IC.Dawn] = ol('Dawn', DAWN);
   i[IC.Kingsplitter] = ol('Kingsplitter', KINGSPLITTER);
+  addMireIcons(i);
   return i;
 }

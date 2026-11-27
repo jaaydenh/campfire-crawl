@@ -2,6 +2,7 @@
 
 import { O } from './manifest';
 import { type Img, blank, line, mirror, ol, outline, over, recolour, shift, spr } from './draw';
+import { addMireObjects } from './mire';
 import { wallFaceTile } from './tiles';
 
 // ---------------------------------------------------------------- fire
@@ -684,5 +685,6 @@ export function buildObjects(): Img[] {
   o[O.Mushroom] = ol('Mushroom', MUSHROOM);
   o[O.Bones] = ol('Bones', BONES);
   o[O.Stump] = shift(ol('Stump', STUMP), 0, 1);
+  addMireObjects(o, ol('Sconce', SCONCE), ol('SconceOdd', SCONCE_ODD));
   return o;
 }

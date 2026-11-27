@@ -35,9 +35,14 @@ export type SfxName =
   | 'phase' // boss phase broken
   | 'victory' // map complete fanfare
   | 'gameover' // run failed
-  | 'turn'; // next player's turn
+  | 'turn' // next player's turn
+  | 'splash' // something heavy hits the water
+  | 'poison' // a hiss of gas: the hero is poisoned
+  | 'zap' // a wisp's spark
+  | 'crumble' // a floor starts to give way
+  | 'valve'; // water rushing after a sluice wheel turns
 
-export type MusicTrack = 'hub' | 'forest' | 'cave' | 'boss';
+export type MusicTrack = 'hub' | 'forest' | 'cave' | 'swamp' | 'temple' | 'boss';
 
 export interface AudioApi {
   /** Create/resume the AudioContext. Safe to call repeatedly; must be called from a user gesture at least once. */

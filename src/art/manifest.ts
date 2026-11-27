@@ -24,6 +24,29 @@ export enum T {
   Pit, // bottomless chasm (not walkable, does not block sight)
   PitEdge, // chasm tile directly below floor, showing the lip of the ledge at its top
   Planks, // wooden plank floor (camp platforms, bridges)
+  // --- map 2: the swamp ---
+  Mud, // plain swamp ground: dark wet earth with moss
+  Mud2, // mud with puddles
+  Mud3, // mud with reeds and toadstools
+  MireTree, // drooping swamp tree canopy from above (solid, blocks sight)
+  MireTree2, // dead, moss-hung tree (solid, blocks sight)
+  Reeds, // a thick stand of reeds (solid, does not block sight)
+  Bog, // shallow mire: walkable, but wading through it is slow
+  Bog2, // shallow mire with lily pads
+  Murk, // deep swamp water: nothing walks or dashes across it, but shots and flyers cross
+  Sinking, // a raft of rotten planks on deep water: it sinks a moment after it is stepped on, then bobs back up
+  // --- map 2: the sunken temple ---
+  TempleFloor, // worn green-grey flagstones
+  TempleFloor2, // flagstones with a cracked slab
+  TempleFloor3, // flagstones with moss in the joints
+  TempleWall, // top of a temple wall (solid, blocks sight)
+  TempleWallFace, // carved front face of a temple wall, drawn where floor lies directly below (solid, blocks sight)
+  TempleCracked, // temple wall face with obvious cracks, can be bombed (solid, blocks sight)
+  TempleRubble, // flagstones strewn with rubble where a cracked wall was blown open
+  Flood, // a flooded channel at high water: deep, like Murk
+  Drained, // the same channel at low water: wet, weedy floor
+  Raft, // a stone float riding at high water: walkable. At low water it lies at the bottom of its shaft (a Pit)
+  Crumble, // a cracked slab over a drop: it falls away a moment after it is stepped on, then grinds back up
   COUNT,
 }
 
@@ -64,6 +87,20 @@ export enum O {
   Mushroom, // small decorative cave mushrooms (non-blocking)
   Bones, // decorative bones (non-blocking)
   Stump, // tree stump
+  // --- map 2 ---
+  ValveHigh, // sluice wheel on a stone post, turned to "high water" (blue mark)
+  ValveLow, // the same wheel turned to "low water" (amber mark)
+  VentOff, // gas vent: a rusted grate in the floor, quiet
+  VentOn, // the grate with green gas boiling out of it
+  Clutch, // leech clutch: a rotten log packed with glistening eggs (monster generator, swamp)
+  Coffin, // sunken coffin: a stone sarcophagus with its lid ajar (monster generator, temple)
+  Statue, // weathered temple statue of a robed figure (solid)
+  Totem, // lizardfolk totem: a skull on a feathered pole (solid)
+  Hut, // small reed hut on stilts (solid)
+  Boat, // a wrecked rowing boat (solid)
+  Lily, // a flowering lily pad (non-blocking, drawn on bog)
+  TSconce, // wall torch on a temple wall face background
+  TSconceOdd, // the same, unlit and slightly tilted: a hidden switch
   COUNT,
 }
 
@@ -100,6 +137,18 @@ export enum F {
   Frost, // ice shard / snowflake
   Slow, // small blue swirl shown over slowed creatures
   ArrowPile, // a tied bundle of arrows: ammunition pickup
+  // --- map 2 ---
+  Glob, // a toad's or vent's glob of green poison
+  Hex, // a shaman's hex bolt: a purple-green skull-ish spark
+  WaterBolt, // the Drowned Priest's bolt of water
+  Dart, // blowpipe dart with a green tip
+  Gas0, // a puff of green gas
+  Gas1, // the puff thinning out
+  Ripple0, // rings on the water over something lurking
+  Ripple1,
+  Splash, // a burst of water
+  Poison, // small green drip shown over poisoned creatures
+  Zap, // a wisp's spark
   COUNT,
 }
 
@@ -141,6 +190,16 @@ export enum IC {
   Berserk, // Berserker Charm: a red fang on a cord
   Dawn, // Dawnbreaker: a blade of light with a sunburst guard
   Kingsplitter, // the Chief's double-bitted throwing axe
+  // --- map 2 ---
+  Antivenom, // Antivenom Charm: a green vial on a cord
+  Waders, // Wading Boots: tall oiled boots
+  StoneSkin, // Stone Skin: a grey stone fist
+  Blowpipe, // a reed pipe with a dart
+  Tide, // Tidecaller: a spiral shell horn
+  LeechRing, // Leech Ring: a dark ring set with a red stone
+  WispLantern, // Wisp Lantern: a lantern with a blue-green wisp inside
+  Crown, // the Drowned Crown: a corroded crown dripping water
+  PoisonUI, // poison status mark for the HUD
   COUNT,
 }
 
@@ -168,10 +227,23 @@ export const SHEETS = {
   dire: { w: 16, h: 16, frames: 2 }, // Dire Wolf: near-black wolf with a red eye
   marksman: { w: 16, h: 16, frames: 2 }, // Bandit Marksman: archer in a red hood
   brute: { w: 16, h: 16, frames: 2 }, // Bandit Brute: bandit in steel plate
+  // Map 2: the swamp and the sunken temple
+  toad: { w: 16, h: 16, frames: 2 }, // bog toad: squat / stretched mid-leap
+  leech: { w: 16, h: 16, frames: 2 }, // a fat black leech, wriggling
+  wisp: { w: 16, h: 16, frames: 2 }, // will-o'-wisp: a pale blue-green flame with a face
+  lizard: { w: 16, h: 16, frames: 2 }, // lizardfolk spearman
+  shaman: { w: 16, h: 16, frames: 2 }, // lizardfolk shaman: feathered mask and staff
+  drowned: { w: 16, h: 16, frames: 2 }, // drowned dead: bloated, weed-hung corpse
+  bloat: { w: 16, h: 16, frames: 2 }, // Bloat Toad: sickly yellow toad
+  gravelight: { w: 16, h: 16, frames: 2 }, // Grave Light: a violet wisp
+  stalker: { w: 16, h: 16, frames: 2 }, // Marsh Stalker: lizardfolk in dark scales with a red crest
+  witch: { w: 16, h: 16, frames: 2 }, // Mire Witch: shaman in a bone-white mask
   // Mini-boss: frames [walk0, walk1, windup (axe raised), enraged walk0, enraged walk1, enraged windup]
   chief: { w: 32, h: 32, frames: 6 }, // the Bandit Chief: burly, horned helm, big axe
-  // NPCs: frames [hermit, merchant]
-  npc: { w: 16, h: 16, frames: 2 },
+  // Mini-boss of map 2, same frame layout: [drift0, drift1, casting (arms raised), then the three again, enraged]
+  priest: { w: 32, h: 32, frames: 6 }, // the Drowned Priest: robed, mitred, weed-hung, holding a censer
+  // NPCs: frames [hermit, merchant, ferryman, penitent]
+  npc: { w: 16, h: 16, frames: 4 },
   // Damage-number digits 0-9, tiny bold white digits with a dark outline
   digits: { w: 5, h: 7, frames: 10 },
 } as const;
