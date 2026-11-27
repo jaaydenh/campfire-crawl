@@ -2,6 +2,7 @@
 import { audio } from './audio/audio';
 import { G, run } from './core';
 import { getMap } from './data/maps';
+import { BOSS_LINES } from './data/monsters';
 import { tierDef } from './data/tiers';
 import { scene } from './game/scene';
 import { advanceTurn, campRest, createRun, discoverItem, finishRun, heroFell } from './run';
@@ -67,7 +68,7 @@ function endRun(won: boolean): void {
   saveNow();
   audio.music(null);
   audio.sfx(won ? 'victory' : 'gameover');
-  ui.summaryScreen(summary, def.name, () => ui.hubScreen());
+  ui.summaryScreen(summary, def, () => ui.hubScreen());
 }
 
 export function wireHooks(): void {
@@ -104,8 +105,10 @@ export function wireHooks(): void {
     r.lives++;
     for (const rh of r.heroes) rh.earned += 10;
     audio.sfx('phase');
-    const help = (tierDef(r.tier).bossHelp[phase - 1] ?? []).length > 0;
-    ui.toast(`${phase === 2 ? 'The Chief is enraged! His guard is broken again: +1 life.' : "The Chief's guard is broken: +1 life."}${help ? ' He calls for help!' : ''}`, 'good');
+    const boss = getMap(r.mapId, r.tier).boss.type;
+    const lines = BOSS_LINES[boss];
+    const help = (tierDef(r.tier).bossHelp[boss]?.[phase - 1] ?? []).length > 0;
+    ui.toast(`${lines.breaks[Math.min(phase, lines.breaks.length) - 1]}: +1 life.${help ? ` ${lines.help}` : ''}`, 'good');
   };
 
   G.hooks.onBossDefeated = () => endRun(true);

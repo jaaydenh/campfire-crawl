@@ -40,14 +40,23 @@ const defs: ItemDef[] = [
   { id: 'berserk', name: 'Berserker Charm', desc: 'Passive. +50% damage while at half health or less.', slot: 'passive', cat: 'offensive', rarity: 2, icon: IC.Berserk, cooldown: 0, price: 105, kit: 5, starter: false },
   { id: 'dawn', name: 'Dawnbreaker', desc: 'A blade of light. Every slash sends a wave flying on, through every monster in its path.', slot: 'active', cat: 'offensive', rarity: 3, icon: IC.Dawn, cooldown: 440, price: 220, kit: 8, starter: false },
   { id: 'kingsplitter', name: 'Kingsplitter', desc: "The Chief's own throwing axe. It cuts through everything on the way out and again on the way back. Catch it to throw again at once.", slot: 'active', cat: 'offensive', rarity: 3, icon: IC.Kingsplitter, cooldown: 1500, price: 200, kit: 8, starter: false },
+  // Found in the Drowned Mire
+  { id: 'blowpipe', name: 'Blowpipe', desc: 'Quick poisoned darts. Each one does little, but the poison keeps working.', slot: 'active', cat: 'offensive', rarity: 1, icon: IC.Blowpipe, cooldown: 420, price: 65, kit: 3, starter: false },
+  { id: 'tide', name: 'Tidecaller', desc: 'A shell horn. Its wave hurls back everything in front of you and leaves it soaked and slow.', slot: 'active', cat: 'offensive', rarity: 2, icon: IC.Tide, cooldown: 3200, price: 115, kit: 6, starter: false },
+  { id: 'crown', name: 'The Drowned Crown', desc: "The Priest's crown. It opens a whirlpool at the cursor that drags monsters in, holds them and grinds them down.", slot: 'active', cat: 'offensive', rarity: 3, icon: IC.Crown, cooldown: 7000, price: 210, kit: 8, starter: false },
   // Defensive
   { id: 'shield', name: 'Shield', desc: 'Hold to block attacks from the direction of the cursor. Slows you while raised.', slot: 'active', cat: 'defensive', rarity: 0, icon: IC.Shield, cooldown: 0, hold: true, price: 30, kit: 2, starter: true },
   { id: 'dash', name: 'Dash Boots', desc: 'A quick dash that passes through danger and over gaps.', slot: 'active', cat: 'defensive', rarity: 1, icon: IC.DashBoots, cooldown: 1500, price: 70, kit: 4, starter: false },
   { id: 'armour', name: 'Leather Armour', desc: 'Passive. Take a quarter less damage.', slot: 'passive', cat: 'defensive', rarity: 0, icon: IC.Armour, cooldown: 0, price: 40, kit: 2, starter: true },
   { id: 'vigor', name: 'Vigor Ring', desc: 'Passive. +8 maximum HP.', slot: 'passive', cat: 'defensive', rarity: 2, icon: IC.VigorRing, cooldown: 0, price: 100, kit: 5, starter: false },
+  { id: 'stoneskin', name: 'Stone Skin', desc: 'Turn to stone for a few seconds: nothing hurts or moves you, but you walk at half speed.', slot: 'active', cat: 'defensive', rarity: 1, icon: IC.StoneSkin, cooldown: 9000, price: 75, kit: 4, starter: false },
+  { id: 'antivenom', name: 'Antivenom Charm', desc: 'Passive. Poison cannot touch you.', slot: 'passive', cat: 'defensive', rarity: 1, icon: IC.Antivenom, cooldown: 0, price: 55, kit: 3, starter: false },
+  { id: 'leechring', name: 'Leech Ring', desc: 'Passive. Every monster you kill gives you 1 HP back.', slot: 'passive', cat: 'defensive', rarity: 2, icon: IC.LeechRing, cooldown: 0, price: 110, kit: 6, starter: false },
   // Utility
   { id: 'lantern', name: 'Lantern', desc: 'Passive. See much further through the dark.', slot: 'passive', cat: 'utility', rarity: 0, icon: IC.Lantern, cooldown: 0, price: 30, kit: 2, starter: true },
   { id: 'magnet', name: 'Magnet Charm', desc: 'Passive. Pulls in coins and hearts, and finds a fifth more gold.', slot: 'passive', cat: 'utility', rarity: 1, icon: IC.Magnet, cooldown: 0, price: 50, kit: 3, starter: true },
+  { id: 'waders', name: 'Wading Boots', desc: 'Passive. Mire does not slow you, and floors that give way hold a little longer.', slot: 'passive', cat: 'utility', rarity: 1, icon: IC.Waders, cooldown: 0, price: 50, kit: 3, starter: false },
+  { id: 'wisplantern', name: 'Wisp Lantern', desc: 'Passive. A caught wisp circles you: it lights the dark like a lantern and strikes the nearest monster every moment or two.', slot: 'passive', cat: 'utility', rarity: 3, icon: IC.WispLantern, cooldown: 0, price: 230, kit: 9, starter: false },
   { id: 'scroll', name: 'Reveal Scroll', desc: 'Reveals the map far around you. Limited supply.', slot: 'active', cat: 'utility', rarity: 0, icon: IC.Scroll, cooldown: 1500, charges: 3, price: 20, kit: 1, starter: true },
 ];
 

@@ -18,6 +18,11 @@ export interface Hero {
   cdMax: number[];
   iframes: number;
   slowT: number;
+  poisonT: number; // ms left poisoned: 1 damage a second, whatever the hero is wearing
+  poisonTick: number;
+  stoneT: number; // ms left as stone: nothing hurts or moves the hero
+  safeX: number; // the last sound ground the hero stood on, to climb back to after a fall
+  safeY: number;
   blocking: boolean;
   dash: { x0: number; y0: number; x1: number; y1: number; t: number; dur: number } | null;
   moving: boolean;
@@ -29,7 +34,12 @@ export interface Hero {
 
 export interface BossState {
   phase: number;
-  mode: 'idle' | 'walk' | 'cleaveWind' | 'chargeWind' | 'charge' | 'stun' | 'throwWind' | 'whirlWind' | 'slamWind' | 'leapWind' | 'leap' | 'recover' | 'break';
+  mode:
+    | 'idle' | 'walk' | 'stun' | 'recover' | 'break'
+    // the Bandit Chief
+    | 'cleaveWind' | 'chargeWind' | 'charge' | 'throwWind' | 'whirlWind' | 'slamWind' | 'leapWind' | 'leap'
+    // the Drowned Priest
+    | 'boltWind' | 'geyserWind' | 'surgeWind' | 'poolWind' | 'waveWind' | 'sink' | 'rise';
   t: number;
   ang: number;
   chargeCd: number;
@@ -43,6 +53,11 @@ export interface BossState {
   sy: number;
   tx: number; // and where it lands
   ty: number;
+  // the Drowned Priest
+  cd: Record<string, number>; // ms until each of his spells is ready again
+  marks: { x: number; y: number; r: number }[]; // where his geysers are about to burst
+  near: number; // ms the hero has been right on top of him
+  wave: { side: number; gap: number }; // the wall of water he is calling: which side it comes from and where its gap is
 }
 
 export interface Mon {
@@ -66,6 +81,11 @@ export interface Mon {
   chain: number; // lunges already made in the current run of lunges
   burnT: number; // ms left burning: it takes a little damage every tick
   burnTick: number; // ms until the next tick of burn damage
+  poisonT: number; // ms left poisoned, the same way
+  poisonTick: number;
+  sx: number; // a leap: where it started
+  sy: number;
+  aid: Mon | null; // a shaman's spell in the making: the ally it is about to mend
   flashT: number;
   face: number; // 1 right, -1 left
   dirX: number;
@@ -100,6 +120,7 @@ export interface Proj {
   back?: { t: number; slot: number; turned: boolean };
   fire: boolean; // bursts and lights braziers
   web: boolean; // slows the hero
+  poison: number; // ms of poison it leaves on what it hits
   spin: number; // radians per second
   hit: Set<Mon>;
   spr: Img;

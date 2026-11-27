@@ -32,6 +32,10 @@ export interface HeroStats {
   pull: number; // px from which pickups fly to the hero
   arrowDrop: number; // chance of an arrow pile per kill while a bow is equipped
   nose: boolean; // hears a chime near undiscovered secrets
+  antivenom: boolean; // poison cannot touch them
+  waders: boolean; // mire does not slow them, and floors that give way hold longer
+  leech: boolean; // every kill heals 1 HP
+  wisp: boolean; // a caught wisp circles them and strikes monsters
 }
 
 const lvl = (p: HeroProfile, id: string) => p.upgrades[id] ?? 0;
@@ -43,7 +47,7 @@ export function heroStats(save: SaveFile, rh: RunHero): HeroStats {
     maxHp: BASE_HP + 4 * lvl(p, 'vit') + (passive === 'vigor' ? 8 : 0) + 4 * rh.charmHp,
     dmgMult: (1 + 0.15 * lvl(p, 'might')) * (1 + 0.1 * rh.charmDmg),
     speed: BASE_SPEED * (1 + 0.05 * lvl(p, 'swift')),
-    light: BASE_LIGHT + lvl(p, 'eyes') + (passive === 'lantern' ? 3 : 0),
+    light: BASE_LIGHT + lvl(p, 'eyes') + (passive === 'lantern' || passive === 'wisplantern' ? 3 : 0),
     goldMult: (1 + 0.15 * lvl(p, 'fortune')) * (passive === 'magnet' ? 1.2 : 1),
     armour: passive === 'armour',
     magnet: passive === 'magnet',
@@ -57,6 +61,10 @@ export function heroStats(save: SaveFile, rh: RunHero): HeroStats {
     pull: (passive === 'magnet' ? 72 : BASE_PULL) + 14 * lvl(p, 'reach'),
     arrowDrop: ARROW_DROP_CHANCE + 0.03 * lvl(p, 'quiver'),
     nose: lvl(p, 'nose') > 0,
+    antivenom: passive === 'antivenom',
+    waders: passive === 'waders',
+    leech: passive === 'leechring',
+    wisp: passive === 'wisplantern',
   };
 }
 

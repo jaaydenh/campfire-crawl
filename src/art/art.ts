@@ -8,6 +8,7 @@ import { buildTiles } from './tiles';
 import { buildObjects } from './objects';
 import { buildFx } from './fx';
 import { buildIcons } from './icons';
+import { buildMireMonsters, buildPriest } from './mire';
 import { buildChief, buildDigits, buildHero, buildMonsters, buildNpcs } from './sprites';
 
 export { artWarnings };
@@ -15,6 +16,8 @@ export { artWarnings };
 export function buildArtFrames(): Record<SheetKey, Img[]> {
   const monsters = buildMonsters();
   return {
+    ...buildMireMonsters(),
+    priest: buildPriest(),
     tiles: buildTiles(),
     objects: buildObjects(),
     fx: buildFx(),

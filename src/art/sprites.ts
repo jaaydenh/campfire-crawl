@@ -1,6 +1,7 @@
 // Characters: heroes, monsters, the Bandit Chief, NPCs, and damage digits.
 
 import { type Img, type Run, blank, line, ol, outline, over, recolour, set, spr, stampRuns } from './draw';
+import { mireNpcs } from './mire';
 
 // ---------------------------------------------------------------- heroes
 // Frames: [down0, down1, up0, up1, side0, side1]. Outlines are hand-placed.
@@ -691,7 +692,7 @@ const MERCHANT = `
 `;
 
 export function buildNpcs(): Img[] {
-  return [ol('Hermit', HERMIT), ol('Merchant', MERCHANT)];
+  return [ol('Hermit', HERMIT), ol('Merchant', MERCHANT), ...mireNpcs()];
 }
 
 // ---------------------------------------------------------------- digits (5x7 cell, 3x5 glyph)

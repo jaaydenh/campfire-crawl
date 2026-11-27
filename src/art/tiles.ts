@@ -2,6 +2,7 @@
 
 import { T } from './manifest';
 import { type Img, blank, get, ol, outline, over, rng, set, setWrap, spr } from './draw';
+import { addMireTiles } from './mire';
 
 function speckle(img: Img, rand: () => number, key: string, n: number): void {
   for (let i = 0; i < n; i++) set(img, Math.floor(rand() * img.w), Math.floor(rand() * img.h), key);
@@ -461,5 +462,6 @@ export function buildTiles(): Img[] {
   t[T.Pit] = spr('Pit', PIT);
   t[T.PitEdge] = spr('PitEdge', PIT_EDGE);
   t[T.Planks] = spr('Planks', PLANKS);
+  addMireTiles(t, spr('Cracks', CRACKS), outline(spr('Rubble', RUBBLE), '1'));
   return t;
 }

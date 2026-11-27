@@ -321,6 +321,10 @@ export function buildMap1(tier = 1): MapDef {
     boss: { type: 'chief', x: 13, y: 80, arena: { x0: 5, y0: 71, x1: 23, y1: 90 }, gate: 'boss' },
     secrets: SECRETS[tier - 1],
     clearUnlocks: CLEAR_UNLOCKS[tier - 1],
+    indoor: b.indoorMask(),
+    scale: { hp: 1, dmg: 1 },
+    music: { outdoor: 'forest', indoor: 'cave' },
+    water: b.water,
   };
 }
 

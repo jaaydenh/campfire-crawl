@@ -3,6 +3,7 @@
 
 import { F } from './manifest';
 import { type Img, ol, outline, over, recolour, spr } from './draw';
+import { addMireFx } from './mire';
 
 const SLASH0 = `
 ......www.......
@@ -609,5 +610,6 @@ export function buildFx(): Img[] {
   f[F.Frost] = ol('Frost', FROST, 'u');
   f[F.Slow] = spr('Slow', SLOW);
   f[F.ArrowPile] = ol('ArrowPile', ARROW_PILE);
+  addMireFx(f);
   return f;
 }

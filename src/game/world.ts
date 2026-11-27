@@ -5,7 +5,7 @@ import { tierDef } from '../data/tiers';
 import { hasFlag, pedestalItem, prizeTaken } from '../run';
 import { seeded } from '../rng';
 import type { RunState, SaveFile } from '../types';
-import { OPAQUE_TILES, PIT_TILES, SOLID_OBJECTS, SOLID_TILES, type MapDef, type MapObject } from '../world/mapdef';
+import { BOG_TILES, CRUMBLE_TILES, DEEP_TILES, OPAQUE_TILES, PIT_TILES, ROCK, SOLID_OBJECTS, SOLID_TILES, wallKind, type MapDef, type MapObject } from '../world/mapdef';
 import { unpackBits } from '../run';
 
 export interface Obj {
@@ -23,6 +23,14 @@ export interface Obj {
 }
 
 export const FLOW_MAX = 30;
+/** A floor that gives way: how long it shakes underfoot, and how long it stays gone. */
+export const CRUMBLE = { shake: 600, gone: 4500 };
+
+/** A tile that has to be redrawn. */
+export interface TileChange {
+  i: number;
+  t: T;
+}
 
 export class World {
   w: number;
@@ -36,6 +44,12 @@ export class World {
   /** Seconds left on timed gates, by puzzle. */
   timers: Record<string, number> = {};
   bossLocked = false;
+  /** Water channels standing at low water. */
+  low = new Set<string>();
+  /** Floors that are giving way or gone: ms left in that state, by tile. */
+  crumbling = new Map<number, { t: number; gone: boolean }>();
+  /** How many of the boss arena's flood stages are under water. */
+  flooded = 0;
 
   constructor(
     public def: MapDef,
@@ -52,7 +66,7 @@ export class World {
     for (const f of run.flags) {
       if (f.startsWith('crack:')) {
         const [x, y] = f.slice(6).split(',').map(Number);
-        this.tiles[y * this.w + x] = T.Rubble;
+        this.tiles[y * this.w + x] = (wallKind(this.tiles[y * this.w + x]) ?? ROCK).rubble;
       }
     }
     for (const d of def.objects) {
@@ -61,13 +75,15 @@ export class World {
       if (d.type === 'pedestal') o.item = pedestalItem(run, save, d);
       // a secret's prize is won once per save: in later runs its pedestal stands empty
       if (d.type === 'pedestal' && d.secret && prizeTaken(save, def.id, d.secret)) o.open = true;
-      if (d.type === 'spikes' || d.type === 'arrowtrap') {
+      if (d.type === 'spikes' || d.type === 'arrowtrap' || d.type === 'vent') {
         // optional traps are there more often on higher tiers
         o.exists = d.chance === undefined || seeded(run.seed, d.id).next() < d.chance + tierDef(run.tier).trapChance;
         o.timer = (d.phase ?? 0) * (d.period ?? 2000);
       }
       this.objs.push(o);
     }
+    for (const [ch, c] of Object.entries(def.water)) if (c.low) this.low.add(ch);
+    for (const o of this.objs) if (o.def.type === 'valve') o.on = this.low.has(o.def.channel!);
     this.resetPuzzlePieces();
     this.syncGates();
   }
@@ -89,16 +105,105 @@ export class World {
   pit(tx: number, ty: number): boolean {
     return PIT_TILES.has(this.tile(tx, ty));
   }
+  /** Deep water: no walking and no dashing across, but shots and flyers pass over. */
+  deep(tx: number, ty: number): boolean {
+    return DEEP_TILES.has(this.tile(tx, ty));
+  }
+  /** Shallow mire: it slows whoever wades through it. */
+  bog(tx: number, ty: number): boolean {
+    return BOG_TILES.has(this.tile(tx, ty));
+  }
   walkable(tx: number, ty: number): boolean {
-    return !this.solid(tx, ty) && !this.pit(tx, ty);
+    return !this.solid(tx, ty) && !this.pit(tx, ty) && !this.deep(tx, ty);
   }
   opaque(tx: number, ty: number): boolean {
     if (!this.inside(tx, ty)) return true;
     return OPAQUE_TILES.has(this.tiles[ty * this.w + tx]);
   }
-  isCave(tx: number, ty: number): boolean {
-    const t = this.tile(tx, ty);
-    return t >= T.CaveFloor && t <= T.Planks;
+  indoor(tx: number, ty: number): boolean {
+    return this.inside(tx, ty) && this.def.indoor[ty * this.w + tx] === 1;
+  }
+
+  // ---------------------------------------------------------------- water levels
+
+  /** What a channel's tiles are at a water level. A drained raft shaft shows its lip under the floor above it. */
+  private waterTiles(ch: string, low: boolean): TileChange[] {
+    const c = this.def.water[ch];
+    if (!c) return [];
+    const floats = new Set(c.float);
+    return [
+      ...c.flood.map((i) => ({ i, t: low ? T.Drained : T.Flood })),
+      ...c.float.map((i) => ({ i, t: !low ? T.Raft : floats.has(i - this.w) || PIT_TILES.has(this.tiles[i - this.w]) ? T.Pit : T.PitEdge })),
+    ];
+  }
+
+  private put(changes: TileChange[]): TileChange[] {
+    const out = changes.filter((c) => this.tiles[c.i] !== c.t);
+    for (const c of out) this.tiles[c.i] = c.t;
+    return out;
+  }
+
+  /** Raises or lowers a channel. Returns the tiles that changed. */
+  setWater(ch: string, low: boolean): TileChange[] {
+    if (low) this.low.add(ch);
+    else this.low.delete(ch);
+    for (const o of this.objs) if (o.def.type === 'valve' && o.def.channel === ch) o.on = low;
+    return this.put(this.waterTiles(ch, low));
+  }
+
+  /** Every channel back to the level it starts a turn at. */
+  resetWater(): TileChange[] {
+    return Object.entries(this.def.water).flatMap(([ch, c]) => this.setWater(ch, c.low));
+  }
+
+  // ---------------------------------------------------------------- floors that give way
+
+  /** The hero has stepped on a tile: a rotten raft or a cracked slab starts to go. Returns true if it did. */
+  stepCrumble(tx: number, ty: number, shake = CRUMBLE.shake): boolean {
+    const i = this.idx(tx, ty);
+    if (!CRUMBLE_TILES.has(this.tiles[i]) || this.crumbling.has(i)) return false;
+    this.crumbling.set(i, { t: shake, gone: false });
+    return true;
+  }
+
+  /** Runs the clocks of floors that are giving way. Returns the tiles that fell or came back. */
+  updateCrumble(dt: number, keep?: (i: number) => boolean): TileChange[] {
+    const out: TileChange[] = [];
+    for (const [i, c] of this.crumbling) {
+      c.t -= dt;
+      if (c.t > 0) continue;
+      if (!c.gone) {
+        c.gone = true;
+        c.t = CRUMBLE.gone;
+        // a slab that falls leaves a hole, with its lip showing under the floor above it
+        const left = CRUMBLE_TILES.get(this.def.tiles[i])!;
+        out.push({ i, t: left === T.Pit && !PIT_TILES.has(this.tiles[i - this.w]) ? T.PitEdge : left });
+      } else if (!keep?.(i)) {
+        this.crumbling.delete(i);
+        out.push({ i, t: this.def.tiles[i] });
+      }
+    }
+    return this.put(out);
+  }
+
+  /** Every fallen floor back in place. */
+  resetCrumble(): TileChange[] {
+    const out = [...this.crumbling.keys()].map((i) => ({ i, t: this.def.tiles[i] as T }));
+    this.crumbling.clear();
+    return this.put(out);
+  }
+
+  // ---------------------------------------------------------------- the boss arena's rising water
+
+  /** Floods the boss arena up to a stage (0 drains it). Returns the tiles that changed. */
+  floodArena(stage: number): TileChange[] {
+    const lists = this.def.boss.flood ?? [];
+    this.flooded = Math.min(stage, lists.length);
+    const out: TileChange[] = [];
+    lists.forEach((list, n) => {
+      for (const i of list) out.push({ i, t: n < this.flooded ? T.Bog : (this.def.tiles[i] as T) });
+    });
+    return this.put(out);
   }
 
   solved(puzzle: string): boolean {
@@ -167,11 +272,17 @@ export class World {
       if (open !== o.open) {
         o.open = open;
         changed.push(o);
-        if (o.def.type === 'hidden') this.tiles[this.idx(o.x, o.y)] = open ? T.CaveFloor : T.CaveWall;
+        if (o.def.type === 'hidden') this.tiles[this.idx(o.x, o.y)] = this.hiddenTile(o, open);
       }
     }
     this.refreshBlocked();
     return changed;
+  }
+
+  /** What a hidden wall is drawn as: the floor of its kind of wall once open, the wall it was authored as while shut. */
+  hiddenTile(o: Obj, open: boolean): T {
+    const shut = this.def.tiles[this.idx(o.x, o.y)] as T;
+    return open ? (wallKind(shut) ?? ROCK).floor : shut;
   }
 
   refreshBlocked(): void {
@@ -226,6 +337,19 @@ export class World {
           found = true;
         }
       }
+    // a lit arena shows all of itself while the fight is on
+    const b = this.def.boss;
+    if (b.lit && this.bossLocked) {
+      for (let y = b.arena.y0 - 1; y <= b.arena.y1 + 1; y++)
+        for (let x = b.arena.x0 - 1; x <= b.arena.x1 + 1; x++) {
+          const i = this.idx(x, y);
+          this.visible[i] = 1;
+          if (!this.explored[i]) {
+            this.explored[i] = 1;
+            found = true;
+          }
+        }
+    }
     return found;
   }
 

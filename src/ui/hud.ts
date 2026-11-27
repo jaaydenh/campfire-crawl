@@ -87,10 +87,12 @@ export function hudFrame(): void {
   set('name', `<span style="color:${HERO_COLORS[p.color]}">${esc(p.name)}</span>`);
   if (st) {
     const bonus = Math.ceil(rh.bonusHp ?? 0);
-    set('hp', `${Math.max(0, Math.ceil(rh.hp))}${bonus > 0 ? ` <b class="bonus">+${bonus}</b>` : ''} / ${st.maxHp}`);
+    const poisoned = !!h && h.poisonT > 0;
+    set('hp', `${poisoned ? ico(IC.PoisonUI, 'sm') : ''}${Math.max(0, Math.ceil(rh.hp))}${bonus > 0 ? ` <b class="bonus">+${bonus}</b>` : ''} / ${st.maxHp}`);
     style('hpbonus', 'width', `${Math.max(0, Math.min(100, (bonus / st.maxHp) * 100)).toFixed(0)}%`);
     style('hpfill', 'width', `${Math.max(0, Math.min(100, (rh.hp / st.maxHp) * 100)).toFixed(0)}%`);
-    style('hpfill', 'background', rh.hp / st.maxHp < 0.3 ? '#e0483a' : '#5fc24f');
+    // low health keeps its red warning even while poisoned: the poison mark beside the number still shows
+    style('hpfill', 'background', rh.hp / st.maxHp < 0.3 ? '#e0483a' : poisoned ? '#9a5fd0' : '#5fc24f');
   }
   set('gold', String(rh.gold));
   set('keys', r.keys.map((k) => ico(k === 'blue' ? IC.KeyBlueUI : IC.KeyRedUI, 'sm')).join(''));
@@ -141,6 +143,10 @@ const MAP_COLORS: Record<number, string> = {
   [T.Tree]: '#1d4027', [T.Tree2]: '#1d4027', [T.Bush]: '#2c5a30', [T.Rock]: '#6a6a70', [T.Water]: '#3a6ac0',
   [T.CaveFloor]: '#6d6478', [T.CaveFloor2]: '#6d6478', [T.CaveFloor3]: '#6d6478', [T.CaveWall]: '#2a2533', [T.CaveWallFace]: '#3a3445',
   [T.Cracked]: '#3a3445', [T.Rubble]: '#7d7488', [T.Pit]: '#0a0810', [T.PitEdge]: '#0a0810', [T.Planks]: '#8a6a40',
+  [T.Mud]: '#5a5338', [T.Mud2]: '#5a5338', [T.Mud3]: '#5a5338', [T.MireTree]: '#16302a', [T.MireTree2]: '#16302a', [T.Reeds]: '#2f5a34',
+  [T.Bog]: '#4c7a4e', [T.Bog2]: '#4c7a4e', [T.Murk]: '#12303a', [T.Sinking]: '#7a5c38',
+  [T.TempleFloor]: '#6c7c70', [T.TempleFloor2]: '#6c7c70', [T.TempleFloor3]: '#6c7c70', [T.TempleWall]: '#222c29', [T.TempleWallFace]: '#35423d',
+  [T.TempleCracked]: '#35423d', [T.TempleRubble]: '#7c8c80', [T.Flood]: '#2a6a80', [T.Drained]: '#4c5a52', [T.Raft]: '#93a394', [T.Crumble]: '#5a685e',
 };
 
 /** Draws explored terrain and landmarks. Used by the minimap and the full map screen. */
