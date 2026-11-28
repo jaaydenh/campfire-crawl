@@ -81,6 +81,16 @@ input[type='range'] { flex: 1; accent-color: var(--gold); }
 .heroico.big { width: 80px; height: 80px; background-size: auto 80px; }
 
 /* title */
+.screen.title { isolation: isolate; overflow: hidden; }
+.titlerow { display: flex; align-items: flex-end; gap: 26px; }
+.title h1 { text-shadow: 4px 4px 0 #7a3b1c, 8px 8px 0 #000, 0 0 calc(16px + 14px * var(--fire, 0.5)) rgba(255, 138, 48, calc(0.3 + 0.25 * var(--fire, 0.5))); }
+/* the campfire: its canvases are sized and placed by campfire.ts, and sit behind everything else on the screen */
+.campfire { position: relative; width: 96px; height: 96px; flex: none; margin-bottom: 12px; }
+.campfire canvas { position: absolute; image-rendering: pixelated; pointer-events: none; z-index: -1; }
+.fireglow, .firelight { transition: opacity 0.09s linear; }
+/* firelight washing over the title and the save cards, brightest by the fire */
+.firelight { position: absolute; left: 50%; bottom: 40px; width: 1800px; height: 1800px; margin: 0 0 -900px -900px; pointer-events: none; z-index: 3; mix-blend-mode: screen;
+  background: radial-gradient(closest-side, rgba(255, 150, 60, 0.42), rgba(255, 118, 44, 0.24) 16%, rgba(255, 96, 34, 0.1) 40%, rgba(255, 80, 30, 0.03) 62%, transparent 80%); }
 .slots { align-items: stretch; flex-wrap: nowrap; margin-bottom: 18px; }
 .slotcard { width: 340px; display: flex; flex-direction: column; gap: 2px; min-height: 190px; }
 .slotcard .row { margin-top: auto; }

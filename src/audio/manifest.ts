@@ -40,9 +40,13 @@ export type SfxName =
   | 'poison' // a hiss of gas: the hero is poisoned
   | 'zap' // a wisp's spark
   | 'crumble' // a floor starts to give way
-  | 'valve'; // water rushing after a sluice wheel turns
+  | 'valve' // water rushing after a sluice wheel turns
+  | 'pop'; // a log in the title screen's campfire pops and spits sparks
 
 export type MusicTrack = 'hub' | 'forest' | 'cave' | 'swamp' | 'temple' | 'boss';
+
+/** A continuous background sound, played under the music on the sound-effects volume. */
+export type Ambience = 'campfire';
 
 export interface AudioApi {
   /** Create/resume the AudioContext. Safe to call repeatedly; must be called from a user gesture at least once. */
@@ -50,6 +54,8 @@ export interface AudioApi {
   sfx(name: SfxName): void;
   /** Switch looping music (cross-fades briefly). null stops music. Calling with the current track is a no-op. */
   music(track: MusicTrack | null): void;
+  /** Fades a background sound in, or out with null. Like music, it waits for unlock() if there is no context yet. */
+  ambience(name: Ambience | null): void;
   /** Volumes 0..1. */
   setVolumes(music: number, sfx: number): void;
   getVolumes(): { music: number; sfx: number };

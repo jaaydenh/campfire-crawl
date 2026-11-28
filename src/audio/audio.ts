@@ -4,7 +4,7 @@
 // Everything is a safe no-op until unlock() succeeds, and wherever `window` or
 // `AudioContext` does not exist (this module is also imported by Node scripts).
 
-import type { AudioApi, MusicTrack, SfxName } from './manifest';
+import type { Ambience, AudioApi, MusicTrack, SfxName } from './manifest';
 
 // ---------------------------------------------------------------------------
 // Note data
@@ -1067,9 +1067,117 @@ const SFX: Record<SfxName, (x: Fx) => void> = {
     T(x, 'saw', noteHz('B3'), 0.3, 0.5, 0.11, { s: 0.5 });
     T(x, 'p25', noteHz('E5'), 0.3, 0.5, 0.11, { s: 0.4 });
   },
+
+  // --- title screen ---
+  pop: (x) => {
+    // a sharp crack with a little knock of wood under it, then two sparks spitting
+    N(x, 'bandpass', 2300 * x.k, 0, 0.03, 0.5, { q: 1.4, a: 0.0005 });
+    N(x, 'highpass', 4800, 0, 0.01, 0.22, { a: 0.0005 });
+    T(x, 'tri', 190 * x.k, 0, 0.07, 0.2, { f2: 70, s: 0.1, a: 0.001 });
+    N(x, 'bandpass', 3600 * x.k, 0.055, 0.006, 0.2, { q: 3, a: 0.0005 });
+    N(x, 'bandpass', 5000 * x.k, 0.1, 0.005, 0.13, { q: 3, a: 0.0005 });
+  },
 };
 
 const lastSfxAt: Partial<Record<SfxName, number>> = {};
+
+// ---------------------------------------------------------------------------
+// Ambience: the campfire
+// ---------------------------------------------------------------------------
+//
+// Three beds of looping noise (a low roar that breathes, the flutter of the
+// flames, a trace of hiss) and, over them, crackles: clicks of band-passed
+// noise a few milliseconds long, scattered at random and mostly in little runs.
+
+interface Amb {
+  gain: GainNode;
+  roar: GainNode;
+  sources: AudioBufferSourceNode[];
+  nextCrackle: number;
+  nextBreath: number;
+}
+
+const AMB_IN = 1.5;
+const AMB_OUT = 0.6;
+const ROAR = 0.4;
+
+/** What the game last asked for; survives until unlock() if there is no context yet. */
+let wantedAmb: Ambience | null = null;
+let amb: Amb | null = null;
+
+function startCampfire(e: Engine): void {
+  const c = e.c;
+  const now = c.currentTime;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(1, now + AMB_IN);
+  gain.connect(e.sfx);
+  const roar = c.createGain();
+  roar.gain.value = ROAR;
+  roar.connect(gain);
+
+  // Each bed plays the shared noise at its own speed, so the loops never line up.
+  const bed = (rate: number, ft: BiquadFilterType, f: number, q: number, v: number, dest: AudioNode): AudioBufferSourceNode => {
+    const src = c.createBufferSource();
+    src.buffer = e.noise;
+    src.loop = true;
+    src.playbackRate.value = rate;
+    const filter = c.createBiquadFilter();
+    filter.type = ft;
+    filter.frequency.value = f;
+    filter.Q.value = q;
+    const g = c.createGain();
+    g.gain.value = v;
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(dest);
+    src.start(now, Math.random() * 1.5);
+    return src;
+  };
+  amb = {
+    gain,
+    roar,
+    sources: [bed(0.47, 'lowpass', 240, 0.5, 1, roar), bed(0.81, 'bandpass', 560, 0.7, 0.3, roar), bed(1, 'highpass', 5200, 0.4, 0.016, gain)],
+    nextCrackle: now + 0.3,
+    nextBreath: now,
+  };
+}
+
+function stopAmbience(e: Engine): void {
+  const a = amb;
+  if (!a) return;
+  amb = null;
+  const now = e.c.currentTime;
+  const g = a.gain.gain;
+  const level = g.value;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(level, now);
+  g.linearRampToValueAtTime(0, now + AMB_OUT);
+  a.sources[0].onended = () => a.gain.disconnect();
+  for (const src of a.sources) src.stop(now + AMB_OUT + 0.05);
+}
+
+function switchAmbience(e: Engine, name: Ambience | null): void {
+  stopAmbience(e);
+  if (name) startCampfire(e);
+  syncTimer();
+}
+
+function scheduleAmbience(e: Engine, a: Amb, now: number): void {
+  while (a.nextCrackle < now + LOOKAHEAD) {
+    const t = Math.max(a.nextCrackle, now + 0.005);
+    // Mostly faint ticks, now and then a sharp snap.
+    const snap = Math.random() ** 3;
+    const d = 0.003 + Math.random() * 0.006 + snap * 0.022;
+    noise(e, a.gain, t, { ft: 'bandpass', f: 900 * 2 ** (Math.random() * 2.6), q: 1.2 + Math.random() * 3, d, v: 0.05 + snap * 0.4, a: 0.0005, r: d * 0.6 });
+    // A crackle is usually followed at once by another; the runs are spaced out at random.
+    a.nextCrackle = t + (Math.random() < 0.4 ? 0.012 + Math.random() * 0.05 : -Math.log(1 - Math.random()) * 0.3);
+  }
+  if (now >= a.nextBreath) {
+    a.nextBreath = now + 0.12 + Math.random() * 0.25;
+    a.roar.gain.setTargetAtTime(ROAR * (0.65 + Math.random() * 0.7), now, 0.18);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Music player
@@ -1197,10 +1305,11 @@ function tick(): void {
     }
     if (current) schedule(e, current, now);
     for (const p of fading) schedule(e, p, now);
+    if (amb) scheduleAmbience(e, amb, now);
   } catch {
     // Audio must never take the game down.
   }
-  if (!current && fading.length === 0) stopTimer();
+  if (!current && fading.length === 0 && !amb) stopTimer();
 }
 
 function stopTimer(): void {
@@ -1212,7 +1321,7 @@ function stopTimer(): void {
 
 /** Runs the scheduler only while something is playing and the page is visible. */
 function syncTimer(): void {
-  const needed = eng !== null && (current !== null || fading.length > 0) && !isHidden();
+  const needed = eng !== null && (current !== null || fading.length > 0 || amb !== null) && !isHidden();
   if (needed && timer === null) {
     timer = setInterval(tick, TICK_MS);
     tick();
@@ -1272,6 +1381,7 @@ export const audio: AudioApi = {
         listening = true;
       }
       if (wanted) switchTo(eng, wanted);
+      if (wantedAmb) switchAmbience(eng, wantedAmb);
     }
     resumeContext(eng);
   },
@@ -1301,6 +1411,17 @@ export const audio: AudioApi = {
     if (!eng) return;
     try {
       switchTo(eng, track);
+    } catch {
+      // Audio must never take the game down.
+    }
+  },
+
+  ambience(name: Ambience | null): void {
+    if (name === wantedAmb) return;
+    wantedAmb = name;
+    if (!eng) return;
+    try {
+      switchAmbience(eng, name);
     } catch {
       // Audio must never take the game down.
     }
