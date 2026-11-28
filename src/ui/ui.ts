@@ -15,6 +15,7 @@ import { KIT_ROLES, buyUpgrade, everCleared, featsOpen, giveItem, heroStats, kit
 import { SLOT_COUNT, deleteSlot, exportSave, loadSlot, newSave, parseSave, writeSlot } from '../save';
 import { GAME_TITLE, LIVES_PER_HERO, MAX_HEROES, controlsOf, type ControlMode, type ItemStack, type RunHero } from '../types';
 import { HERO_COLORS, drawMap, esc, ico, itemIco } from './hud';
+import { mountCampfire } from './campfire';
 import { applyVolumes, musicIcon, musicToggle, toggleMusic } from './sound';
 
 type Handler = (el: HTMLElement, ev: Event) => void;
@@ -126,7 +127,8 @@ const heroIco = (color: number, cls = '') => `<i class="heroico ${cls}" style="-
 // ---------------------------------------------------------------- title and save files
 
 export function titleScreen(): void {
-  audio.music('hub');
+  audio.music(null); // only the fire is heard here; the music starts at the camp
+  audio.ambience('campfire');
   const slots = Array.from({ length: SLOT_COUNT }, (_, i) => loadSlot(i));
   const card = (i: number) => {
     const s = slots[i];
@@ -143,7 +145,7 @@ export function titleScreen(): void {
   show(
     'title',
     `<div class="screen title">
-      <h1>${GAME_TITLE}</h1>
+      <div class="titlerow"><div class="campfire"></div><h1>${GAME_TITLE}</h1></div>
       <p class="tag">A pass-the-controls dungeon crawl for 1 to 4 players</p>
       <div class="row slots">${[0, 1, 2].map(card).join('')}</div>
       <p class="muted small">Progress is stored in this browser. Export a save to back it up or move it to another computer.</p>
@@ -197,6 +199,7 @@ export function titleScreen(): void {
       },
     },
   );
+  mountCampfire(modal.querySelector('.campfire') as HTMLElement);
 }
 
 function confirmBox(msg: string, yes: string, onYes: () => void, onNo: () => void): void {
@@ -216,6 +219,7 @@ let selMap = '';
 export function hubScreen(): void {
   const s = G.save!;
   audio.music('hub');
+  audio.ambience(null); // the fire is on the title screen
   party = party.filter((i) => i < s.heroes.length);
   if (!party.length && !s.run) party = s.heroes.map((_, i) => i);
   if (selHero >= s.heroes.length) selHero = Math.max(0, s.heroes.length - 1);
