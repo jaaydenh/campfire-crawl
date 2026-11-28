@@ -291,29 +291,28 @@ export function mountCampfire(host: HTMLElement): void {
   const px = new Uint32Array(image.data.buffer);
   paint(ctx, image, px);
 
-  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const tick = still ? 220 : TICK_MS;
-  const row = host.parentElement;
   const run = ++mounted;
+  // For anyone who has asked for less motion the fire is a still picture: one frame, a steady glow, no loop.
+  if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const row = host.parentElement;
   let last = performance.now();
   let owed = 0;
   const frame = (now: number): void => {
     if (run !== mounted || !host.isConnected) return;
-    owed = Math.min(owed + now - last, tick * 3);
+    owed = Math.min(owed + now - last, TICK_MS * 3);
     last = now;
-    if (owed >= tick) {
-      while (owed >= tick) {
+    if (owed >= TICK_MS) {
+      while (owed >= TICK_MS) {
         step(true);
-        owed -= tick;
+        owed -= TICK_MS;
       }
       paint(ctx, image, px);
-      if (!still) {
-        // 0 at the dimmest flicker, 1 at the brightest
-        const g = Math.min(1, Math.max(0, (f.glow - 0.8) / 0.4));
-        glowCv.style.opacity = (0.72 + 0.28 * g).toFixed(3);
-        light.style.opacity = (0.78 + 0.22 * g).toFixed(3);
-        row?.style.setProperty('--fire', g.toFixed(3));
-      }
+      // 0 at the dimmest flicker, 1 at the brightest
+      const g = Math.min(1, Math.max(0, (f.glow - 0.8) / 0.4));
+      glowCv.style.opacity = (0.72 + 0.28 * g).toFixed(3);
+      light.style.opacity = (0.78 + 0.22 * g).toFixed(3);
+      row?.style.setProperty('--fire', g.toFixed(3));
     }
     requestAnimationFrame(frame);
   };
